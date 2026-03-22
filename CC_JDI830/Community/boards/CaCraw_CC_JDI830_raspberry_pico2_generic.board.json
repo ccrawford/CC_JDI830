@@ -13,19 +13,18 @@
     "ForceResetOnFirmwareUpdate": true,
     "MessageSize": 96
   },
-  "HardwareIds": ["^VID_2E8A&PID_000A","^VID_2E8A&PID_F00A","^VID_2E8A&PID_F00F"],
+  "HardwareIds": ["^VID_2E8A&PID_000A","^VID_2E8A&PID_F00A","^VID_2E8A&PID_F00F", "^VID_2E8A&PID_AA01"],
   "Info": {
     "CanInstallFirmware": true,
     "CanResetBoard": true,
-    "FirmwareBaseName": "mobiflight_template_raspberrypico2_generic",
+    "FirmwareBaseName": "cacraw_cc_jdi830_raspberrypico2_generic",
     "FirmwareExtension": "uf2",
-    "FriendlyName": "Mobiflight RaspiPico2 generic",
+    "FriendlyName": "CC JDI830 RP2",
     "LatestFirmwareVersion": "2.5.1",
-    "MobiFlightType": "Mobiflight RaspiPico2 generic",
+    "MobiFlightType": "CC_JDI830 RP2",
     "ResetFirmwareFile": "reset.raspberry_pico1-2_flash_nuke.uf2",
     "CustomDeviceTypes": [
-        "MOBIFLIGHT_TEMPLATE",
-        "MOBIFLIGHT_TEMPLATE2"
+        "CC_JDI830"
       ],
       "Community": {
         "Project": "Your Project",
@@ -46,7 +45,7 @@
     "MaxShifters": 6,
     "MaxSteppers": 6,
     "MaxInputMultiplexer": 6,
-    "MaxCustomDevices": 0
+    "MaxCustomDevices": 2
   },
   "Pins": [
     {

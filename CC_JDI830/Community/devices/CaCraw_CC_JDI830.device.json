@@ -1,0 +1,120 @@
+{
+    "$schema": "./mfdevice.schema.json",
+    "Info": {
+      "Label": "Craw CC_JDI830",
+      "Type": "CC_JDI830",
+      "Author": "CaCraw",
+      "URL": "https://github.com/ccrawford/CC_JDI830",
+      "Version" : "1.0.0"
+    },
+    "Config": {
+      "Pins": [
+        "SCLK Pin",
+        "MOSI Pin",
+        "DC Pin",
+        "CS Pin",
+        "RST Pin",
+        "BL Pin"
+      ],
+      "isI2C": false
+    },
+    "MessageTypes": [
+      {
+        "id": 11,
+        "label": "RPM",
+        "description": "Engine RPM"
+      },
+      {
+        "id": 12,
+        "label": "MAP",
+        "description": "Engine Manifold Air Pressure (in inHg)"
+      },
+      {
+        "id": 0,
+        "label": "EGT",
+        "description": "EGT for each cylinder, separated by |, or just a single EGT if that's all that's available"
+      },
+      {
+        "id": 1,
+        "label": "CHT",
+        "description": "CHT for each cylinder, separated by |, or just a single EGT if that's all that's available"
+      },
+      {
+        "id": 2,
+        "label": "TIT 1",
+        "description": "Turbine Inlet Temperature #1 (if plane has it)"
+      },
+      {
+        "id": 3,
+        "label": "TIT 2",
+        "description": "Turbine Inlet Temperature #2 (if plane has it)"
+      },
+      {
+        "id": 4,
+        "label": "Oil Temp",
+        "description": "Engine Oil Temperature"
+      },
+      {
+        "id": 5,
+        "label": "Oil Pressure",
+        "description": "Engine Oil Pressure"
+      },
+      {
+        "id": 6,
+        "label": "Battery Volts",
+        "description": "Battery Voltage"
+      },
+      {
+        "id": 7,
+        "label": "OAT",
+        "description": "Outside Air Temperature"
+      },
+      {
+        "id": 8,
+        "label": "Carburator Air Temperature",
+        "description": "Carb Air Temp (if present)"
+      },
+      {
+        "id": 9,
+        "label": "Compressor Discharge Temp",
+        "description": "Compressor Discharge Temp (if present)"
+      },
+      {
+        "id": 10,
+        "label": "Intercooler Air Temp",
+        "description": "Intercooler Air Temp (if present)"
+      },
+      {
+        "id": 13,
+        "label": "Fuel Remaining",
+        "description": "Fuel Remaining (Gal)"
+      },
+      {
+        "id": 14,
+        "label": "Waypoint Distance",
+        "description": "Distance to next Waypoint, nautical miles"
+      },
+      {
+        "id": 15,
+        "label": "Fuel Flow",
+        "description": "Fuel Flow in Gallons per Hour"
+      },
+      {
+        "id": 16,
+        "label": "Fuel Capacity",
+        "description": "Total Fuel Capacity in Gallons"
+      },
+      {
+        "id": 17,
+        "label": "HP",
+        "description": "Engine current Horse Power"
+      },
+      {
+        "id": 18,
+        "label": "Plane Profile #",
+        "description": "Plane Profile #. (To Be Enumerated)"
+      }
+
+    ]
+  }
+  

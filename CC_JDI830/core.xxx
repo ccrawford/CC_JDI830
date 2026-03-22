@@ -1,0 +1,309 @@
+#include <Arduino.h>
+#include <algorithm>
+
+#include "35tftspi480x320.h"
+
+// Font includes
+#include "Fonts/SevenSeg42.h"
+#include "Fonts/SevenSeg32.h"
+#include "Fonts/verdana12.h"
+#include "Fonts/verdana11.h"
+#include "Fonts/VerdanaB12.h"
+#include "Fonts/ArialNB12.h"
+#include "Fonts/ArialN11.h"
+#include "Fonts/ArialN16.h"
+#include "Fonts/ArialNI16.h"
+#include "Fonts/ArialNI36.h"
+
+// Gauge includes
+#include "JPIGauges.hpp"
+#include "HBarGauge.hpp"
+#include "ArcGauge.hpp"
+#include "ColumnBarGauge.hpp"
+#include "ValueGauge.hpp"
+
+#include "BottomBarPages.hpp"
+
+#include "EngineState.hpp"
+#include "PlaneProfiles.hpp"
+#include "DisplayParams.hpp"
+
+static LGFX lcd;
+
+
+EngineState curState;
+
+// Active plane profile — change this pointer to switch aircraft
+//const PlaneProfile* activeProfile = &PROFILE_A2A_COMANCHE;
+const PlaneProfile* activeProfile = &PROFILE_CESSNA_T206H;
+
+// ---------------------------------------------------------------------------
+// applyRangeDef — applies a GaugeRangeDef's range, redline, and color bands
+// to any Gauge.  Keeps setupGauges() from repeating this pattern 10+ times.
+// ---------------------------------------------------------------------------
+static void applyRangeDef(Gauge& gauge, const GaugeRangeDef& def) {
+    gauge.setRange(def.min, def.max);
+    if (def.redline > 0) gauge.setRedline(def.redline);
+    for (uint8_t i = 0; i < def.colorCount; i++) {
+        gauge.addColorRange(def.colors[i].min, def.colors[i].max,
+                            def.colors[i].color);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Right-column layout
+// ---------------------------------------------------------------------------
+static constexpr int NUM_RIGHT_BAR_SLOTS = 5;   // how many HBar gauges on screen
+
+// ---------------------------------------------------------------------------
+// Gauge instances
+// ---------------------------------------------------------------------------
+static ArcGauge        rpmGauge(&lcd);
+static ArcGauge        mapGauge(&lcd);
+static HBarGauge       rightBars[NUM_RIGHT_BAR_SLOTS] = {
+    HBarGauge(&lcd), HBarGauge(&lcd), HBarGauge(&lcd),
+    HBarGauge(&lcd), HBarGauge(&lcd)
+};
+static ColumnBarGauge  egtChtBars(&lcd);
+static ValueGauge      hpPct(&lcd);
+static BottomBar       bottomBar(&lcd);
+
+// --- Right-column gauge selections (mutable at runtime) ---
+// Change these to reconfigure which gauges appear in the right column.
+// Call setupRightBars() after changing to apply the new layout.
+DisplayVarId rightBarSelections[NUM_RIGHT_BAR_SLOTS] = {
+    DisplayVarId::OIL_TEMP,
+    DisplayVarId::FUEL_FLOW,
+    DisplayVarId::FUEL_REM,
+    DisplayVarId::OAT,
+    DisplayVarId::BATTERY,
+};
+
+static BottomPage bottomPages[MAX_BOTTOM_PAGES];
+static int numBottomPages = 0;
+static int currentBottomPage = 0;
+static uint32_t lastPageChange = 0;
+static constexpr uint32_t PAGE_ROTATE_MS = 5000;  // auto-rotate every 5 seconds
+
+// ---------------------------------------------------------------------------
+// setupRightBars — (re)configures the right-column HBar gauges from the
+// current rightBarSelections[] array.  Safe to call at any time to apply
+// new selections without restarting.
+// ---------------------------------------------------------------------------
+void setupRightBars() {
+    const PlaneProfile& p = *activeProfile;
+
+    int barH = 29;
+    int barW = 80;
+    int barX = 220;
+    int barY = -20;
+    int barYSpacing = 34;
+
+    for (int i = 0; i < NUM_RIGHT_BAR_SLOTS; i++) {
+        DisplayVarInfo info = resolveDisplayVar(
+            rightBarSelections[i], p, curState);
+
+        HBarGauge& bar = rightBars[i];
+        bar.clearColorRanges();
+        bar.setPosition(barX, barY + (i + 1) * barYSpacing);
+        bar.setLabel(info.label);
+        bar.setValuePtr(info.valuePtr);
+        bar.setLabelFont(verdana11);
+        bar.setValueFont(verdanab12);
+        bar.setDecimals(info.decimals);
+        if (info.range) {
+            applyRangeDef(bar, *info.range);
+
+            // Special case: FUEL_REM range max comes from the sim, not the profile
+            if (rightBarSelections[i] == DisplayVarId::FUEL_REM) {
+                bar.setRange(0, curState.fuelCapacity);
+            }
+        }
+        bar.init(barW, barH);
+    }
+}
+
+void setupGauges() {
+    const PlaneProfile& p = *activeProfile;
+
+    // --- RPM Arc Gauge ---
+    rpmGauge.setPosition(10, 1);
+    rpmGauge.setLabel("RPM");
+    rpmGauge.setValuePtr(&curState.rpm);
+    rpmGauge.setArcGeometry(75, 85, 75, 70);
+    rpmGauge.setAngles(182, 358);
+    rpmGauge.setNeedle(55, TFT_WHITE);
+    rpmGauge.setValueFont(SevenSeg32);
+    rpmGauge.setLabelFont(verdanab12);
+    applyRangeDef(rpmGauge, p.rpm);
+    rpmGauge.init(205, 90);
+
+    // --- MAP Arc Gauge ---
+    if (p.hasMap) {
+        mapGauge.setPosition(10, 95);
+        mapGauge.setLabel("MAP");
+        mapGauge.setValuePtr(&curState.map);
+        mapGauge.setArcGeometry(75, 2, 75, 70);
+        mapGauge.setInverted(true);
+        mapGauge.setAngles(178, 2);
+        mapGauge.setNeedle(55, TFT_WHITE);
+        mapGauge.setDecimals(1);
+        mapGauge.setValueFont(SevenSeg32);
+        mapGauge.setLabelFont(verdanab12);
+        applyRangeDef(mapGauge, p.map);
+        mapGauge.init(205, 90);
+    }
+
+    // --- %HP Value Gauge ---
+    hpPct.setPosition(2, 185);
+    hpPct.setLabel("% HP");
+    hpPct.setValuePtr(&curState.hp);
+    hpPct.setValueFont(ArialN16);
+    hpPct.setLabelFont(ArialN11);
+    hpPct.setValueColor(TFT_WHITE);
+    hpPct.setLayout(35, LABEL_RIGHT);
+    hpPct.init(90, 20);
+
+    // --- HBar Gauges (right column) — configured from rightBarSelections[] ---
+    setupRightBars();
+
+    // --- EGT/CHT Column Bars (with optional TIT) ---
+    // Layout is computed automatically from sprite size, cylinder count, and TIT count.
+    egtChtBars.setPosition(5, 205);
+    egtChtBars.setNumCylinders(p.numCylinders);
+    egtChtBars.setEgtRange(p.egt.min, p.egt.max);
+    egtChtBars.setChtRange(p.cht.min, p.cht.max);
+    if (p.egt.redline > 0) egtChtBars.setEgtRedline(p.egt.redline);
+    if (p.cht.redline > 0) egtChtBars.setChtRedline(p.cht.redline);
+    egtChtBars.setEgtColor(TFT_SKYBLUE);
+    egtChtBars.setChtColor(TFT_WHITE);
+    egtChtBars.setScaleFont(ArialN11);
+    egtChtBars.setLabelFont(ArialN11);
+    egtChtBars.setValueFont(ArialN11);
+    for (int i = 0; i < p.numCylinders; i++) {
+        egtChtBars.setEgtPtr(i, &curState.egt[i]);
+        egtChtBars.setChtPtr(i, &curState.cht[i]);
+    }
+    if (p.hasTit1) {
+        egtChtBars.setTitRange(p.tit1.min, p.tit1.max);
+        if (p.tit1.redline > 0) egtChtBars.setTitRedline(p.tit1.redline);
+        egtChtBars.setTitColor(TFT_CYAN);
+        egtChtBars.addTit(&curState.tit1, "T");
+    }
+    if (p.hasTit2) {
+        egtChtBars.addTit(&curState.tit2, "T2");
+    }
+    egtChtBars.init(310, 165);  // computeLayout() handles everything
+
+    // --- Bottom bar ---
+    numBottomPages = buildBottomPages(bottomPages, p);
+    bottomBar.setPosition(5, 380);
+    bottomBar.setMessageFont(ArialNI16);
+    bottomBar.init(310, 45);
+    if (numBottomPages > 0)
+        bottomBar.setPage(bottomPages[0]);
+}
+
+
+void drawStatic() {
+    lcd.drawLine(6,93, 163, 93, TFT_DARKGRAY);
+}
+
+void setup() {
+    lcd.init();
+    lcd.setRotation(0);  // portrait mode, 320x480
+    lcd.fillScreen(TFT_BLACK);
+
+    Serial.begin(115200);
+
+
+    setupGauges();
+
+    // Initial draw of all gauges
+    rpmGauge.update();
+    if (activeProfile->hasMap) mapGauge.update();
+    for (int i = 0; i < NUM_RIGHT_BAR_SLOTS; i++) rightBars[i].update();
+    egtChtBars.update();
+
+    bottomBar.update();
+    hpPct.update();
+
+    drawStatic();
+}
+
+// Simple animation counter for demo — slowly varies some values
+static uint32_t lastUpdate = 0;
+static float rpmDelta = 10.0f;
+
+void loop() {
+    uint32_t now = millis();
+
+    // Update simulated values every 100ms for demo purposes
+    if (now - lastUpdate > 200) {
+        lastUpdate = now;
+
+        // Bounce RPM between 2000 and 2700
+        // curState.rpm += rpmDelta;
+        // if (curState.rpm > 2800) { curState.rpm = 2700; rpmDelta = -10.0f; }
+        // if (curState.rpm < 2000) { curState.rpm = 2000; rpmDelta = 10.0f; }
+
+        curState.map += 0.1f;
+        if (curState.map > 33) curState.map =14.0f;
+
+        curState.egt[4] += 10;
+        if (curState.egt[4] > 1800) curState.egt[4] = 850;
+
+        curState.cht[1] += 10;
+        if (curState.cht[1] > 500) curState.cht[1] = 250;
+
+        curState.hp += 1;
+        if (curState.hp > 100) curState.hp = 0;
+
+        // Slowly vary EGT on cylinder 3
+        curState.egt[2] = 1500 + sin(now / 2000.0f) * 100;
+
+        curState.fuelRem -= 0.1;
+        if (curState.fuelRem < 0) curState.fuelRem = 60;
+
+        // Recompute peaks
+        int nCyl = activeProfile->numCylinders;
+        auto egtIt = std::max_element(curState.egt, curState.egt + nCyl);
+        curState.egtPeak    = *egtIt;
+        curState.egtPeakCyl = egtIt - curState.egt;
+
+        auto chtIt = std::max_element(curState.cht, curState.cht + nCyl);
+        curState.chtPeak    = *chtIt;
+        curState.chtPeakCyl = chtIt - curState.cht;
+
+        curState.selectedCylinder = 3;
+        egtChtBars.setSelectedCylinder(curState.selectedCylinder);
+
+        // Keep selected-cylinder copies up to date
+        curState.egtSelected = curState.egt[curState.selectedCylinder];
+        curState.chtSelected = curState.cht[curState.selectedCylinder];
+
+//        egtChtBars.setSelectedCylinder(curState.chtPeakCyl);
+    }
+
+    // Auto-rotate bottom bar pages
+    if (now - lastPageChange > PAGE_ROTATE_MS) {
+        lastPageChange = now;
+        currentBottomPage = (currentBottomPage + 1) % numBottomPages;
+        bottomBar.setPage(bottomPages[currentBottomPage]);
+    }
+
+    
+    // lcd.fillArc(200,200, 100,120, 180,360,TFT_RED);
+    // return;
+
+    // Update all gauges — each one only redraws if its value changed
+    rpmGauge.update();
+    if (activeProfile->hasMap) mapGauge.update();
+    for (int i = 0; i < NUM_RIGHT_BAR_SLOTS; i++) rightBars[i].update();
+    egtChtBars.update();
+
+    bottomBar.update();
+    hpPct.update();
+
+//    lcd.drawRect(0,0,320,415,TFT_PINK);
+}
