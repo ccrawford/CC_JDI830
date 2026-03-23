@@ -2,6 +2,8 @@
 
 Building a stand alone JDI Engine monitor for the RP2350 + cheap red spi display. 
 
+Yes, I know that there is a commercial product with a very similar name.
+
 Work in progress, March 2026.
 
 Current status:
