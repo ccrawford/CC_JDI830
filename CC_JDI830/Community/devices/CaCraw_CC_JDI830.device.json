@@ -112,7 +112,7 @@
       {
         "id": 18,
         "label": "Plane Profile #",
-        "description": "Plane Profile #. (To Be Enumerated)"
+        "description": "Plane Profile #. 1: A2A Comanche, 2: Cessna T206H, 3: Generic C172"
       }
 
     ]

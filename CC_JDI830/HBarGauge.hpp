@@ -1,5 +1,7 @@
 #pragma once
 #include "JPIGauges.hpp"
+#include "Fonts/ArialNB12.h"
+#include "Fonts/ArialN11.h"
 
 // ---------------------------------------------------------------------------
 // HBarGauge — horizontal bar gauge with color bands and triangle pointer.

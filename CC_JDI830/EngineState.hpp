@@ -49,5 +49,4 @@ struct EngineState {
     float chtSelected = 0;
 };
 
-// Single global instance, defined in main.cpp
-extern EngineState curState;
+// EngineState instance lives inside CC_JDI830 as a member (curState).

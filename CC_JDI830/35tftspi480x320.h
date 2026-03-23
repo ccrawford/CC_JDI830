@@ -7,35 +7,33 @@ class LGFX : public lgfx::LGFX_Device
   lgfx::Light_PWM      _light_instance;
 
 public:
+  // Default constructor — sets up non-pin config (SPI speeds, panel geometry, etc.)
+  // Call configurePins() before init() to apply the actual pin assignments from MobiFlight.
   LGFX(void)
   {
-    // --- SPI Bus ---
+    // --- SPI Bus (non-pin defaults) ---
     {
       auto cfg = _bus_instance.config();
 
-      // On RP2040/RP2350 with arduino-pico core, you specify the SPI port
-      // as a pointer: &SPI for spi0, &SPI1 for spi1.
-      // Default Pico SPI0 pins: SCK=18, MOSI=19, MISO=16 (but any valid
-      // SPI0 pins work — RP2350 is flexible about pin assignment within a bus).
       cfg.spi_host    = 0;          // 0 = SPI0, 1 = SPI1
       cfg.spi_mode    = 0;
       cfg.freq_write  = 40000000;   // 40MHz; RP2350 SPI tops out ~62.5MHz
       cfg.freq_read   = 16000000;
-      cfg.pin_sclk    = 18;         // <<< your SCK pin  (must be valid SPI0 SCK)
-      cfg.pin_mosi    = 19;         // <<< your MOSI pin (must be valid SPI0 TX)
-      cfg.pin_miso    = 16;         // <<< your MISO pin (must be valid SPI0 RX)
-      cfg.pin_dc      = 20;         // <<< your DC/RS pin (any GPIO)
+      cfg.pin_sclk    = -1;
+      cfg.pin_mosi    = -1;
+      cfg.pin_miso    = -1;
+      cfg.pin_dc      = -1;
 
       _bus_instance.config(cfg);
       _panel_instance.setBus(&_bus_instance);
     }
 
-    // --- Panel ---
+    // --- Panel (non-pin defaults) ---
     {
       auto cfg = _panel_instance.config();
 
-      cfg.pin_cs       = 5;        // <<< your CS pin (any GPIO)
-      cfg.pin_rst      = 4;        // <<< your RESET pin (any GPIO)
+      cfg.pin_cs       = -1;
+      cfg.pin_rst      = -1;
       cfg.pin_busy     = -1;
 
       cfg.panel_width  = 320;
@@ -49,24 +47,54 @@ public:
       cfg.invert           = false;
       cfg.rgb_order        = false;  // ILI9488 is BGR; toggle if colors look wrong
       cfg.dlen_16bit       = false;
-      cfg.bus_shared       = true;   // set false if display has its own dedicated SPI bus
+      cfg.bus_shared       = true;
 
       _panel_instance.config(cfg);
     }
 
-    // --- Backlight ---
+    // --- Backlight (non-pin defaults) ---
     {
       auto cfg = _light_instance.config();
 
-      cfg.pin_bl      = 22;         // <<< your LED pin, or -1 if hardwired to 3.3V
+      cfg.pin_bl      = -1;
       cfg.invert      = false;
       cfg.freq        = 44100;
-      cfg.pwm_channel = 0;          // RP2350 PWM: channels 0-15 (any slice/channel)
+      cfg.pwm_channel = 0;
 
       _light_instance.config(cfg);
       _panel_instance.setLight(&_light_instance);
     }
 
     setPanel(&_panel_instance);
+  }
+
+  // Apply pin assignments from MobiFlight config. Call this before init().
+  void configurePins(uint8_t sclk, uint8_t mosi, uint8_t dc,
+                     uint8_t cs, uint8_t rst, uint8_t bl)
+  {
+    // Update SPI bus pins
+    {
+      auto cfg = _bus_instance.config();
+      cfg.pin_sclk = sclk;
+      cfg.pin_mosi = mosi;
+      cfg.pin_miso = -1;       // not used (write-only display)
+      cfg.pin_dc   = dc;
+      _bus_instance.config(cfg);
+    }
+
+    // Update panel pins
+    {
+      auto cfg = _panel_instance.config();
+      cfg.pin_cs  = cs;
+      cfg.pin_rst = rst;
+      _panel_instance.config(cfg);
+    }
+
+    // Update backlight pin
+    {
+      auto cfg = _light_instance.config();
+      cfg.pin_bl = bl;
+      _light_instance.config(cfg);
+    }
   }
 };

@@ -5,8 +5,6 @@
 #include <Arduino.h>
 #include <algorithm>
 
-#include "35tftspi480x320.h"
-
 // Font includes
 #include "Fonts/SevenSeg42.h"
 #include "Fonts/SevenSeg32.h"
@@ -16,34 +14,12 @@
 #include "Fonts/ArialNI16.h"
 #include "Fonts/ArialNI36.h"
 
-// Gauge includes
-#include "JPIGauges.hpp"
-#include "HBarGauge.hpp"
-#include "ArcGauge.hpp"
-#include "ColumnBarGauge.hpp"
-#include "ValueGauge.hpp"
-
-#include "BottomBarPages.hpp"
-
-#include "EngineState.hpp"
-#include "PlaneProfiles.hpp"
-#include "DisplayParams.hpp"
-
-static LGFX lcd;
-
-
-EngineState curState;
-
-// Active plane profile — change this pointer to switch aircraft
-//const PlaneProfile* activeProfile = &PROFILE_A2A_COMANCHE;
-const PlaneProfile* activeProfile = &PROFILE_CESSNA_T206H;
-
 
 // ---------------------------------------------------------------------------
 // applyRangeDef — applies a GaugeRangeDef's range, redline, and color bands
 // to any Gauge.  Keeps setupGauges() from repeating this pattern 10+ times.
 // ---------------------------------------------------------------------------
-static void applyRangeDef(Gauge& gauge, const GaugeRangeDef& def) {
+void CC_JDI830::applyRangeDef(Gauge& gauge, const GaugeRangeDef& def) {
     gauge.setRange(def.min, def.max);
     if (def.redline > 0) gauge.setRedline(def.redline);
     for (uint8_t i = 0; i < def.colorCount; i++) {
@@ -53,46 +29,11 @@ static void applyRangeDef(Gauge& gauge, const GaugeRangeDef& def) {
 }
 
 // ---------------------------------------------------------------------------
-// Right-column layout
-// ---------------------------------------------------------------------------
-static constexpr int NUM_RIGHT_BAR_SLOTS = 5;   // how many HBar gauges on screen
-
-// ---------------------------------------------------------------------------
-// Gauge instances
-// ---------------------------------------------------------------------------
-static ArcGauge        rpmGauge(&lcd);
-static ArcGauge        mapGauge(&lcd);
-static HBarGauge       rightBars[NUM_RIGHT_BAR_SLOTS] = {
-    HBarGauge(&lcd), HBarGauge(&lcd), HBarGauge(&lcd),
-    HBarGauge(&lcd), HBarGauge(&lcd)
-};
-static ColumnBarGauge  egtChtBars(&lcd);
-static ValueGauge      hpPct(&lcd);
-static BottomBar       bottomBar(&lcd);
-
-// --- Right-column gauge selections (mutable at runtime) ---
-// Change these to reconfigure which gauges appear in the right column.
-// Call setupRightBars() after changing to apply the new layout.
-DisplayVarId rightBarSelections[NUM_RIGHT_BAR_SLOTS] = {
-    DisplayVarId::OIL_TEMP,
-    DisplayVarId::FUEL_FLOW,
-    DisplayVarId::FUEL_REM,
-    DisplayVarId::OAT,
-    DisplayVarId::BATTERY,
-};
-
-static BottomPage bottomPages[MAX_BOTTOM_PAGES];
-static int numBottomPages = 0;
-static int currentBottomPage = 0;
-static uint32_t lastPageChange = 0;
-static constexpr uint32_t PAGE_ROTATE_MS = 5000;  // auto-rotate every 5 seconds
-
-// ---------------------------------------------------------------------------
 // setupRightBars — (re)configures the right-column HBar gauges from the
 // current rightBarSelections[] array.  Safe to call at any time to apply
 // new selections without restarting.
 // ---------------------------------------------------------------------------
-void setupRightBars() {
+void CC_JDI830::setupRightBars() {
     const PlaneProfile& p = *activeProfile;
 
     int barH = 29;
@@ -105,7 +46,7 @@ void setupRightBars() {
         DisplayVarInfo info = resolveDisplayVar(
             rightBarSelections[i], p, curState);
 
-        HBarGauge& bar = rightBars[i];
+        HBarGauge& bar = _rightBars[i];
         bar.clearColorRanges();
         bar.setPosition(barX, barY + (i + 1) * barYSpacing);
         bar.setLabel(info.label);
@@ -125,95 +66,119 @@ void setupRightBars() {
     }
 }
 
-void setupGauges() {
+void CC_JDI830::setupGauges() {
     const PlaneProfile& p = *activeProfile;
 
     // --- RPM Arc Gauge ---
-    rpmGauge.setPosition(10, 1);
-    rpmGauge.setLabel("RPM");
-    rpmGauge.setValuePtr(&curState.rpm);
-    rpmGauge.setArcGeometry(75, 85, 75, 70);
-    rpmGauge.setAngles(182, 358);
-    rpmGauge.setNeedle(55, TFT_WHITE);
-    rpmGauge.setValueFont(SevenSeg32);
-    rpmGauge.setLabelFont(ArialNB12);
-    applyRangeDef(rpmGauge, p.rpm);
-    rpmGauge.init(205, 90);
+    _rpmGauge.setPosition(10, 1);
+    _rpmGauge.setLabel("RPM");
+    _rpmGauge.setValuePtr(&curState.rpm);
+    _rpmGauge.setArcGeometry(75, 85, 75, 70);
+    _rpmGauge.setAngles(182, 358);
+    _rpmGauge.setNeedle(55, TFT_WHITE);
+    _rpmGauge.setValueFont(SevenSeg32);
+    _rpmGauge.setLabelFont(ArialNB12);
+    applyRangeDef(_rpmGauge, p.rpm);
+    _rpmGauge.init(205, 90);
 
     // --- MAP Arc Gauge ---
     if (p.hasMap) {
-        mapGauge.setPosition(10, 95);
-        mapGauge.setLabel("MAP");
-        mapGauge.setValuePtr(&curState.map);
-        mapGauge.setArcGeometry(75, 2, 75, 70);
-        mapGauge.setInverted(true);
-        mapGauge.setAngles(178, 2);
-        mapGauge.setNeedle(55, TFT_WHITE);
-        mapGauge.setDecimals(1);
-        mapGauge.setValueFont(SevenSeg32);
-        mapGauge.setLabelFont(ArialNB12);
-        applyRangeDef(mapGauge, p.map);
-        mapGauge.init(205, 90);
+        _mapGauge.setPosition(10, 95);
+        _mapGauge.setLabel("MAP");
+        _mapGauge.setValuePtr(&curState.map);
+        _mapGauge.setArcGeometry(75, 2, 75, 70);
+        _mapGauge.setInverted(true);
+        _mapGauge.setAngles(178, 2);
+        _mapGauge.setNeedle(55, TFT_WHITE);
+        _mapGauge.setDecimals(1);
+        _mapGauge.setValueFont(SevenSeg32);
+        _mapGauge.setLabelFont(ArialNB12);
+        applyRangeDef(_mapGauge, p.map);
+        _mapGauge.init(205, 90);
     }
 
     // --- %HP Value Gauge ---
-    hpPct.setPosition(2, 185);
-    hpPct.setLabel("% HP");
-    hpPct.setValuePtr(&curState.hp);
-    hpPct.setValueFont(ArialN16);
-    hpPct.setLabelFont(ArialN11);
-    hpPct.setValueColor(TFT_WHITE);
-    hpPct.setLayout(35, LABEL_RIGHT);
-    hpPct.init(90, 20);
+    _hpPct.setPosition(2, 185);
+    _hpPct.setLabel("% HP");
+    _hpPct.setValuePtr(&curState.hp);
+    _hpPct.setValueFont(ArialN16);
+    _hpPct.setLabelFont(ArialN11);
+    _hpPct.setValueColor(TFT_WHITE);
+    _hpPct.setLayout(35, LABEL_RIGHT);
+    _hpPct.init(90, 20);
 
     // --- HBar Gauges (right column) — configured from rightBarSelections[] ---
     setupRightBars();
 
     // --- EGT/CHT Column Bars (with optional TIT) ---
     // Layout is computed automatically from sprite size, cylinder count, and TIT count.
-    egtChtBars.setPosition(5, 205);
-    egtChtBars.setNumCylinders(p.numCylinders);
-    egtChtBars.setEgtRange(p.egt.min, p.egt.max);
-    egtChtBars.setChtRange(p.cht.min, p.cht.max);
-    if (p.egt.redline > 0) egtChtBars.setEgtRedline(p.egt.redline);
-    if (p.cht.redline > 0) egtChtBars.setChtRedline(p.cht.redline);
-    egtChtBars.setEgtColor(TFT_SKYBLUE);
-    egtChtBars.setChtColor(TFT_WHITE);
-    egtChtBars.setScaleFont(ArialN11);
-    egtChtBars.setLabelFont(ArialN11);
-    egtChtBars.setValueFont(ArialN11);
+    _egtChtBars.setPosition(5, 205);
+    _egtChtBars.setNumCylinders(p.numCylinders);
+    _egtChtBars.setEgtRange(p.egt.min, p.egt.max);
+    _egtChtBars.setChtRange(p.cht.min, p.cht.max);
+    if (p.egt.redline > 0) _egtChtBars.setEgtRedline(p.egt.redline);
+    if (p.cht.redline > 0) _egtChtBars.setChtRedline(p.cht.redline);
+    _egtChtBars.setEgtColor(TFT_SKYBLUE);
+    _egtChtBars.setChtColor(TFT_WHITE);
+    _egtChtBars.setScaleFont(ArialN11);
+    _egtChtBars.setLabelFont(ArialN11);
+    _egtChtBars.setValueFont(ArialN11);
     for (int i = 0; i < p.numCylinders; i++) {
-        egtChtBars.setEgtPtr(i, &curState.egt[i]);
-        egtChtBars.setChtPtr(i, &curState.cht[i]);
+        _egtChtBars.setEgtPtr(i, &curState.egt[i]);
+        _egtChtBars.setChtPtr(i, &curState.cht[i]);
     }
     if (p.hasTit1) {
-        egtChtBars.setTitRange(p.tit1.min, p.tit1.max);
-        if (p.tit1.redline > 0) egtChtBars.setTitRedline(p.tit1.redline);
-        egtChtBars.setTitColor(TFT_CYAN);
-        egtChtBars.addTit(&curState.tit1, "T");
+        _egtChtBars.setTitRange(p.tit1.min, p.tit1.max);
+        if (p.tit1.redline > 0) _egtChtBars.setTitRedline(p.tit1.redline);
+        _egtChtBars.setTitColor(TFT_CYAN);
+        _egtChtBars.addTit(&curState.tit1, "T");
     }
     if (p.hasTit2) {
-        egtChtBars.addTit(&curState.tit2, "T2");
+        _egtChtBars.addTit(&curState.tit2, "T2");
     }
-    egtChtBars.init(310, 165);  // computeLayout() handles everything
+    _egtChtBars.init(310, 165);  // computeLayout() handles everything
 
     // --- Bottom bar ---
-    numBottomPages = buildBottomPages(bottomPages, p);
-    bottomBar.setPosition(5, 380);
-    bottomBar.setMessageFont(ArialNI16);
-    bottomBar.init(310, 45);
-    if (numBottomPages > 0)
-        bottomBar.setPage(bottomPages[0]);
+    _numBottomPages = buildBottomPages(_bottomPages, p, curState);
+    _bottomBar.setPosition(5, 380);
+    _bottomBar.setMessageFont(ArialNI16);
+    _bottomBar.init(310, 45);
+    if (_numBottomPages > 0)
+        _bottomBar.setPage(_bottomPages[0]);
 }
 
 
-void drawStatic() {
-    lcd.drawLine(6,93, 163, 93, TFT_DARKGRAY);
+// ---------------------------------------------------------------------------
+// setProfile — switch to a different PlaneProfile by index.
+// Short-circuits if the index hasn't actually changed (MobiFlight can
+// send redundant updates).  After switching, re-runs setupGauges() and
+// forces every gauge dirty so the new layout draws on the next update().
+// ---------------------------------------------------------------------------
+void CC_JDI830::setProfile(int index) {
+    if (index < 0 || index >= NUM_PROFILES) return;
+    if (index == _profileIndex) return;       // no-op if unchanged
+
+    _profileIndex = index;
+    activeProfile = ALL_PROFILES[index];
+    Serial.printf("Profile changed to: %s\n", activeProfile->name);
+
+    setupGauges();
+
+    // setupGauges() reconfigures ranges/colors/labels but the float
+    // values haven't changed, so the base Gauge::update() won't see
+    // a value delta and _dirty stays false.  Force a full redraw.
+    _rpmGauge.forceDirty();
+    _mapGauge.forceDirty();
+    _hpPct.forceDirty();
+    _egtChtBars.forceDirty();
+    _bottomBar.forceDirty();
+    for (int i = 0; i < NUM_RIGHT_BAR_SLOTS; i++)
+        _rightBars[i].forceDirty();
 }
 
-// Simple animation counter for demo — slowly varies some values
-static uint32_t lastUpdate = 0;
-static float rpmDelta = 10.0f;
+void CC_JDI830::drawStatic() {
+    _lcd.drawLine(6,93, 163, 93, TFT_DARKGRAY);
+}
 
 CC_JDI830::CC_JDI830(uint8_t sclk, uint8_t mosi, uint8_t dc, uint8_t cs, uint8_t rst, uint8_t bl)
 {
@@ -223,32 +188,23 @@ CC_JDI830::CC_JDI830(uint8_t sclk, uint8_t mosi, uint8_t dc, uint8_t cs, uint8_t
     _pinCS = cs;
     _pinRST = rst;
     _pinBL = bl;
-
-
 }
 
 void CC_JDI830::begin()
 {
+    // Apply pin config from MobiFlight before initializing the display hardware
+    _lcd.configurePins(_pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL);
 
-    
+    Serial.printf("sclk: %d mosi: %d dc: %d cs: %d rst: %d bl: %d\n", _pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL);
 
-    lcd.init();
-    lcd.setRotation(0);  // portrait mode, 320x480
-    lcd.fillScreen(TFT_BLACK);
+    _lcd.init();
+    _lcd.setRotation(0);  // portrait mode, 320x480
+    _lcd.fillScreen(TFT_BLACK);
 
     Serial.begin(115200);
 
-
-    setupGauges();
-
-    // Initial draw of all gauges
-    rpmGauge.update();
-    if (activeProfile->hasMap) mapGauge.update();
-    for (int i = 0; i < NUM_RIGHT_BAR_SLOTS; i++) rightBars[i].update();
-    egtChtBars.update();
-
-    bottomBar.update();
-    hpPct.update();
+    // Load default profile (later: read saved index from NVS here)
+    setProfile(0);
 
     drawStatic();
 }
@@ -276,25 +232,117 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
         Put in your code to enter this mode (e.g. clear a display)
 
     ********************************************************************************** */
-    int32_t  data = atoi(setPoint);
-    uint16_t output;
-
     // do something according your messageID
     switch (messageID) {
     case -1:
-        // tbd., get's called when Mobiflight shuts down
+        // tbd., gets called when MobiFlight shuts down
+        break;
     case -2:
-        // tbd., get's called when PowerSavingMode is entered
-    case 0:
-        output = (uint16_t)data;
-        data   = output;
+        // tbd., gets called when PowerSavingMode is entered
         break;
-    case 1:
-        /* code */
+
+    case 0: {
+        // EGT — either "val1|val2|...|valN" per cylinder, or a single value
+        int nCyl = activeProfile->numCylinders;
+        if (strchr(setPoint, '|')) {
+            char* tok = strtok(setPoint, "|");
+            for (int i = 0; i < nCyl && tok != nullptr; i++) {
+                curState.egt[i] = strtof(tok, nullptr);
+                tok = strtok(nullptr, "|");
+            }
+        } else {
+            float val = strtof(setPoint, nullptr);
+            for (int i = 0; i < nCyl; i++)
+                curState.egt[i] = val;
+        }
         break;
+    }
+
+    case 1: {
+        // CHT — same pipe-delimited or single-value format as EGT
+        int nCyl = activeProfile->numCylinders;
+        if (strchr(setPoint, '|')) {
+            char* tok = strtok(setPoint, "|");
+            for (int i = 0; i < nCyl && tok != nullptr; i++) {
+                curState.cht[i] = strtof(tok, nullptr);
+                tok = strtok(nullptr, "|");
+            }
+        } else {
+            float val = strtof(setPoint, nullptr);
+            for (int i = 0; i < nCyl; i++)
+                curState.cht[i] = val;
+        }
+        break;
+    }
+
     case 2:
-        /* code */
+        curState.tit1 = strtof(setPoint, nullptr);
         break;
+
+    case 3:
+        curState.tit2 = strtof(setPoint, nullptr);
+        break;
+
+    case 4:
+        curState.oilT = strtof(setPoint, nullptr);
+        break;
+
+    case 5:
+        curState.oilP = strtof(setPoint, nullptr);
+        break;
+
+    case 6:
+        curState.bat = strtof(setPoint, nullptr);
+        break;
+
+    case 7:
+        curState.oat = strtof(setPoint, nullptr);
+        break;
+
+    case 8:
+        curState.crb = strtof(setPoint, nullptr);
+        break;
+
+    case 9:
+        curState.cdt = strtof(setPoint, nullptr);
+        break;
+
+    case 10:
+        curState.iat = strtof(setPoint, nullptr);
+        break;
+
+    case 11:
+        curState.rpm = strtof(setPoint, nullptr);
+        break;
+
+    case 12:
+        curState.map = strtof(setPoint, nullptr);
+        break;
+
+    case 13:
+        curState.fuelRem = strtof(setPoint, nullptr);
+        break;
+
+    case 14:
+        curState.waypointDist = strtof(setPoint, nullptr);
+        break;
+
+    case 15:
+        curState.ff = strtof(setPoint, nullptr);
+        break;
+
+    case 16:
+        curState.fuelCapacity = strtof(setPoint, nullptr);
+        break;
+
+    case 17:
+        curState.hp = strtof(setPoint, nullptr);
+        break;
+
+    case 18:
+        setProfile(atoi(setPoint));
+        break;
+
     default:
         break;
     }
@@ -305,13 +353,13 @@ void CC_JDI830::update()
     uint32_t now = millis();
 
     // Update simulated values every 100ms for demo purposes
-    if (now - lastUpdate > 200) {
-        lastUpdate = now;
+    /* if (now - _lastUpdate > 200) {
+        _lastUpdate = now;
 
         // Bounce RPM between 2000 and 2700
-        // curState.rpm += rpmDelta;
-        // if (curState.rpm > 2800) { curState.rpm = 2700; rpmDelta = -10.0f; }
-        // if (curState.rpm < 2000) { curState.rpm = 2000; rpmDelta = 10.0f; }
+        // curState.rpm += _rpmDelta;
+        // if (curState.rpm > 2800) { curState.rpm = 2700; _rpmDelta = -10.0f; }
+        // if (curState.rpm < 2000) { curState.rpm = 2000; _rpmDelta = 10.0f; }
 
         curState.map += 0.1f;
         if (curState.map > 33) curState.map =14.0f;
@@ -342,34 +390,29 @@ void CC_JDI830::update()
         curState.chtPeakCyl = chtIt - curState.cht;
 
         curState.selectedCylinder = 3;
-        egtChtBars.setSelectedCylinder(curState.selectedCylinder);
+        _egtChtBars.setSelectedCylinder(curState.selectedCylinder);
 
         // Keep selected-cylinder copies up to date
         curState.egtSelected = curState.egt[curState.selectedCylinder];
         curState.chtSelected = curState.cht[curState.selectedCylinder];
 
-//        egtChtBars.setSelectedCylinder(curState.chtPeakCyl);
+//        _egtChtBars.setSelectedCylinder(curState.chtPeakCyl);
     }
-
+*/
     // Auto-rotate bottom bar pages
-    if (now - lastPageChange > PAGE_ROTATE_MS) {
-        lastPageChange = now;
-        currentBottomPage = (currentBottomPage + 1) % numBottomPages;
-        bottomBar.setPage(bottomPages[currentBottomPage]);
+    if (now - _lastPageChange > PAGE_ROTATE_MS) {
+        _lastPageChange = now;
+        _currentBottomPage = (_currentBottomPage + 1) % _numBottomPages;
+        _bottomBar.setPage(_bottomPages[_currentBottomPage]);
     }
-
-    
-    // lcd.fillArc(200,200, 100,120, 180,360,TFT_RED);
-    // return;
 
     // Update all gauges — each one only redraws if its value changed
-    rpmGauge.update();
-    if (activeProfile->hasMap) mapGauge.update();
-    for (int i = 0; i < NUM_RIGHT_BAR_SLOTS; i++) rightBars[i].update();
-    egtChtBars.update();
+    _rpmGauge.update();
+    if (activeProfile->hasMap) _mapGauge.update();
+    for (int i = 0; i < NUM_RIGHT_BAR_SLOTS; i++) _rightBars[i].update();
+    _egtChtBars.update();
 
-    bottomBar.update();
-    hpPct.update();
+    _bottomBar.update();
+    _hpPct.update();
 
-//    lcd.drawRect(0,0,320,415,TFT_PINK);
 }

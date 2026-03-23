@@ -10,6 +10,19 @@ const char CustomDeviceConfig[] PROGMEM = {};
 
 extern MFEEPROM MFeeprom;
 
+// Safely extract the next token from a '|'-delimited string.
+// Returns the token as an integer, or 'defaultVal' if the token is missing.
+// 'label' is used in the error message so you know which pin failed.
+static int nextTokenInt(char **savePtr, const char *label, int defaultVal = 0)
+{
+    char *token = strtok_r(NULL, "|", savePtr);
+    if (token == nullptr) {
+        cmdMessenger.sendCmd(kStatus, "WARNING: missing token for '%s', using default %d\n", label, defaultVal);
+        return defaultVal;
+    }
+    return atoi(token);
+}
+
 /* **********************************************************************************
     The custom device pins, type and configuration is stored in the EEPROM
     While loading the config the adresses in the EEPROM are transferred to the constructor
@@ -89,36 +102,44 @@ void MFCustomDevice::attach(uint16_t adrPin, uint16_t adrType, uint16_t adrConfi
         _customType = JDI830_DEVICE;
 
     if (_customType == JDI830_DEVICE) {
+
+
+
         /* **********************************************************************************
             Check if the device fits into the device buffer
         ********************************************************************************** */
         if (!FitInMemory(sizeof(CC_JDI830))) {
-            // Error Message to Connector
+            // Error Message to Connector. Dump it to the console as well after a delay.
+            
+            delay(5000);  // delay because this message fires before a terminal can open
             cmdMessenger.sendCmd(kStatus, F("Custom Device does not fit in Memory"));
+            Serial.printf("sizeof CC_JDI830: %u\n", (unsigned)sizeof(CC_JDI830));
             return;
         }
         /* **********************************************************************************************
             Read the pins from the EEPROM or Flash, copy them into a buffer
             If you have set '"isI2C": true' in the device.json file, the first value is the I2C address
         ********************************************************************************************** */
-        getStringFromMem(adrPin, parameter, configFromFlash);
+        if (!getStringFromMem(adrPin, parameter, configFromFlash)) {
+            cmdMessenger.sendCmd(kStatus, "ERROR: failed to read pin config from memory, aborting attach");
+            return;
+        }
         /* **********************************************************************************************
             Split the pins up into single pins. As the number of pins could be different between
             multiple devices, it is done here.
         ********************************************************************************************** */
         params = strtok_r(parameter, "|", &p);
+        if (params == nullptr) {
+            cmdMessenger.sendCmd(kStatus, "ERROR: pin config string is empty, aborting attach");
+            return;
+        }
         _pinSCLK  = atoi(params);
-        params = strtok_r(NULL, "|", &p);
-        _pinMOSI  = atoi(params);
-        params = strtok_r(NULL, "|", &p);
-        _pinDC  = atoi(params);
-        params = strtok_r(NULL, "|", &p);
-        _pinCS  = atoi(params);
-        params = strtok_r(NULL, "|", &p);
-        _pinRST  = atoi(params);
-        params = strtok_r(NULL, "|", &p);
-        _pinBL  = atoi(params);
-
+        _pinMOSI  = nextTokenInt(&p, "MOSI");
+        _pinDC    = nextTokenInt(&p, "DC");
+        _pinCS    = nextTokenInt(&p, "CS");
+        _pinRST   = nextTokenInt(&p, "RST");
+        _pinBL    = nextTokenInt(&p, "BL");
+    
         /* **********************************************************************************
             Read the configuration from the EEPROM or Flash, copy it into a buffer.
         ********************************************************************************** */

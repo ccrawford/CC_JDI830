@@ -170,7 +170,7 @@ inline BottomValueDef makeValueDef(const char *label, const float *ptr,
 // ---------------------------------------------------------------------------
 static constexpr int MAX_BOTTOM_PAGES = 20;
 
-inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
+inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p, EngineState &state)
 {
     int n = 0;
 
@@ -179,9 +179,9 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::DUAL,
                       drawDualLabelValue,
-                      makeValueDef("EGT", &curState.egtSelected, 0, nullptr, p.egt),
+                      makeValueDef("EGT", &state.egtSelected, 0, nullptr, p.egt),
                       drawDualLabelValue,
-                      makeValueDef("CHT", &curState.chtSelected, 0, nullptr, p.cht)};
+                      makeValueDef("CHT", &state.chtSelected, 0, nullptr, p.cht)};
     }
 
     // EGT / CHT peak
@@ -189,9 +189,9 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::DUAL,
                       drawDualLabelValue,
-                      makeValueDef("EGT-P", &curState.egtPeak, 0, nullptr, p.egt),
+                      makeValueDef("EGT-P", &state.egtPeak, 0, nullptr, p.egt),
                       drawDualLabelValue,
-                      makeValueDef("CHT-P", &curState.chtPeak, 0, nullptr, p.cht)};
+                      makeValueDef("CHT-P", &state.chtPeak, 0, nullptr, p.cht)};
     }
 
     // TIT1
@@ -199,7 +199,7 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::SINGLE,
                       drawSingleValueUnits,
-                      makeValueDef("TIT", &curState.tit1, 0, nullptr, p.tit1),
+                      makeValueDef("TIT", &state.tit1, 0, nullptr, p.tit1),
                       nullptr,
                       {}};
     }
@@ -209,7 +209,7 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::SINGLE,
                       drawSingleValueUnits,
-                      makeValueDef("TIT2", &curState.tit2, 0, nullptr, p.tit2),
+                      makeValueDef("TIT2", &state.tit2, 0, nullptr, p.tit2),
                       nullptr,
                       {}};
     }
@@ -219,8 +219,8 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::SINGLE,
                       drawSingleValueUnits,
-                      makeValueDef("OAT", &curState.oat,
-                                   decimalsFor(DisplayVarId::OAT, p, curState), nullptr, p.oat),
+                      makeValueDef("OAT", &state.oat,
+                                   decimalsFor(DisplayVarId::OAT, p, state), nullptr, p.oat),
                       nullptr,
                       {}};
     }
@@ -230,8 +230,8 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::SINGLE,
                       drawLabelValueUnits,
-                      makeValueDef("USD", &curState.used,
-                                   decimalsFor(DisplayVarId::FUEL_REM, p, curState), "GAL", p.used),
+                      makeValueDef("USD", &state.used,
+                                   decimalsFor(DisplayVarId::FUEL_REM, p, state), "GAL", p.used),
                       nullptr,
                       {}};
     }
@@ -241,8 +241,8 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::SINGLE,
                       drawSingleValueUnits,
-                      makeValueDef("FF", &curState.ff,
-                                   decimalsFor(DisplayVarId::FUEL_FLOW, p, curState), "GPH", p.ff),
+                      makeValueDef("FF", &state.ff,
+                                   decimalsFor(DisplayVarId::FUEL_FLOW, p, state), "GPH", p.ff),
                       nullptr,
                       {}};
     }
@@ -252,8 +252,8 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::SINGLE,
                       drawSingleValueUnits,
-                      makeValueDef("% HP", &curState.hp,
-                                   decimalsFor(DisplayVarId::HP, p, curState), nullptr, p.hp),
+                      makeValueDef("% HP", &state.hp,
+                                   decimalsFor(DisplayVarId::HP, p, state), nullptr, p.hp),
                       nullptr,
                       {}};
     }
@@ -263,11 +263,11 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::DUAL,
                       drawDualLabelValue,
-                      makeValueDef("O-T", &curState.oilT,
-                                   decimalsFor(DisplayVarId::OIL_TEMP, p, curState), nullptr, p.oilT),
+                      makeValueDef("O-T", &state.oilT,
+                                   decimalsFor(DisplayVarId::OIL_TEMP, p, state), nullptr, p.oilT),
                       drawDualLabelValue,
-                      makeValueDef("O-P", &curState.oilP,
-                                   decimalsFor(DisplayVarId::OIL_PRESS, p, curState), nullptr, p.oilP)};
+                      makeValueDef("O-P", &state.oilP,
+                                   decimalsFor(DisplayVarId::OIL_PRESS, p, state), nullptr, p.oilP)};
     }
 
     // Battery
@@ -275,8 +275,8 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::SINGLE,
                       drawLabelValueUnits,
-                      makeValueDef("BAT", &curState.bat,
-                                   decimalsFor(DisplayVarId::BATTERY, p, curState), "V", p.bat),
+                      makeValueDef("BAT", &state.bat,
+                                   decimalsFor(DisplayVarId::BATTERY, p, state), "V", p.bat),
                       nullptr,
                       {}};
     }
@@ -286,8 +286,8 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::SINGLE,
                       drawSingleValueUnits,
-                      makeValueDef("CRB", &curState.crb,
-                                   decimalsFor(DisplayVarId::CARB_TEMP, p, curState), nullptr, p.crb),
+                      makeValueDef("CRB", &state.crb,
+                                   decimalsFor(DisplayVarId::CARB_TEMP, p, state), nullptr, p.crb),
                       nullptr,
                       {}};
     }
@@ -297,11 +297,11 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::DUAL,
                       drawDualLabelValue,
-                      makeValueDef("CDT", &curState.cdt,
-                                   decimalsFor(DisplayVarId::CDT, p, curState), nullptr, p.cdt),
+                      makeValueDef("CDT", &state.cdt,
+                                   decimalsFor(DisplayVarId::CDT, p, state), nullptr, p.cdt),
                       drawDualLabelValue,
-                      makeValueDef("IAT", &curState.iat,
-                                   decimalsFor(DisplayVarId::IAT, p, curState), nullptr, p.iat)};
+                      makeValueDef("IAT", &state.iat,
+                                   decimalsFor(DisplayVarId::IAT, p, state), nullptr, p.iat)};
     }
 
     // EGT differential
@@ -309,8 +309,8 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::SINGLE,
                       drawSingleValueUnits,
-                      makeValueDef("DIF", &curState.dif,
-                                   decimalsFor(DisplayVarId::EGT_DIF, p, curState), nullptr, p.dif),
+                      makeValueDef("DIF", &state.dif,
+                                   decimalsFor(DisplayVarId::EGT_DIF, p, state), nullptr, p.dif),
                       nullptr,
                       {}};
     }
@@ -320,8 +320,8 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::SINGLE,
                       drawLabelValueUnits,
-                      makeValueDef("USD", &curState.used,
-                                   decimalsFor(DisplayVarId::FUEL_REM, p, curState), "GAL", p.used),
+                      makeValueDef("USD", &state.used,
+                                   decimalsFor(DisplayVarId::FUEL_REM, p, state), "GAL", p.used),
                       nullptr,
                       {}};
     }
@@ -331,7 +331,7 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::SINGLE,
                       drawSingleValueUnits,
-                      makeValueDef("MPG", &curState.mpg, 1, nullptr, p.hp), // no specific range def for MPG yet
+                      makeValueDef("MPG", &state.mpg, 1, nullptr, p.hp), // no specific range def for MPG yet
                       nullptr,
                       {}};
     }
@@ -341,7 +341,7 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p)
     {
         pages[n++] = {BottomMode::SINGLE,
                       drawHHMMValue,
-                      makeValueDef("REM", &curState.endurance, 0, nullptr, p.endurance), // no specific range def yet
+                      makeValueDef("REM", &state.endurance, 0, nullptr, p.endurance), // no specific range def yet
                       nullptr,
                       {}};
     }

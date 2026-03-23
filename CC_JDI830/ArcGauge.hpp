@@ -1,5 +1,6 @@
 #pragma once
 #include "JPIGauges.hpp"
+#include "Fonts/ArialN11.h"
 
 // ---------------------------------------------------------------------------
 // ArcGauge — circular arc gauge with color bands, needle, and numeric readout.
