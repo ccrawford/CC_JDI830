@@ -1,0 +1,84 @@
+//
+// allocatemem.cpp
+//
+// (C) MobiFlight Project 2022
+//
+// NOTE:
+// THIS IS A MODIFIED allocateMem.cpp that belongs in /src/src/allocateMem.cpp
+// Includes fixes for non-AVR devices that have large classes with most of their
+// data in the class rather than as static / global. 
+// For AVR, "ELEM_SIZE" was the same as bytes (since MF uses uint8_t). For RP2040/2350 and ESP32 
+//   MF uses the std::size_t to keep things aligned for the 32bit processor (smart) but 
+//   that breaks the size check which is looking at "elements" rather than bytes.
+
+#include "allocateMem.h"
+#include "commandmessenger.h"
+
+#ifdef ARDUINO_ARCH_AVR
+uint8_t deviceBuffer[MF_MAX_DEVICEMEM] = {0};
+#else
+std::size_t deviceBuffer[MF_MAX_DEVICEMEM] = {0};
+#endif
+
+// Element size of the buffer — 1 on AVR (uint8_t), 4 on 32-bit (std::size_t).
+// Used to convert between byte counts and element indices.
+#ifdef ARDUINO_ARCH_AVR
+static constexpr uint16_t ELEM_SIZE = 1;
+#else
+static constexpr uint16_t ELEM_SIZE = sizeof(std::size_t);
+#endif
+
+uint16_t nextPointer = 0;  // index in elements, not bytes
+
+// Convert a byte count to the number of buffer elements needed,
+// rounding up so we never under-allocate.
+static inline uint16_t bytesToElements(uint16_t bytes)
+{
+    return (bytes + ELEM_SIZE - 1) / ELEM_SIZE;
+}
+
+#ifdef ARDUINO_ARCH_AVR
+uint8_t *allocateMemory(uint16_t size)
+#else
+std::size_t *allocateMemory(uint16_t size)
+#endif
+{
+    uint16_t elements      = bytesToElements(size);
+    uint16_t actualPointer = nextPointer;
+    nextPointer            = actualPointer + elements;
+    if (nextPointer >= MF_MAX_DEVICEMEM) {
+        cmdMessenger.sendCmd(kStatus, F("DeviceBuffer Overflow!"));
+        nextPointer = actualPointer;  // roll back — don't leave the pointer past the end
+        return nullptr;
+    }
+#ifdef DEBUG2CMDMESSENGER
+    cmdMessenger.sendCmdStart(kDebug);
+    cmdMessenger.sendCmdArg(F("Bytes added"));
+    cmdMessenger.sendCmdArg(size);
+    cmdMessenger.sendCmdEnd();
+    cmdMessenger.sendCmdStart(kDebug);
+    cmdMessenger.sendCmdArg(F("BufferUsage (elements)"));
+    cmdMessenger.sendCmdArg(nextPointer);
+    cmdMessenger.sendCmdEnd();
+#endif
+    return &deviceBuffer[actualPointer];
+}
+
+void ClearMemory()
+{
+    nextPointer = 0;
+}
+
+uint16_t GetAvailableMemory()
+{
+    // Return available space in bytes, not elements
+    return (MF_MAX_DEVICEMEM - nextPointer) * ELEM_SIZE;
+}
+
+bool FitInMemory(uint16_t size)
+{
+    uint16_t elements = bytesToElements(size);
+    return (nextPointer + elements <= MF_MAX_DEVICEMEM);
+}
+
+// allocatemem.cpp
