@@ -2,6 +2,10 @@
 
 #include "JPIGauges.hpp"   // ColorRange
 
+// Forward-declare so isAvailable() can take a DisplayVarId parameter
+// without creating a circular include (DisplayParams.hpp includes us).
+enum class DisplayVarId : uint8_t;
+
 // ---------------------------------------------------------------------------
 // GaugeRangeDef — range, redline, and color bands for one measurement.
 //
@@ -67,6 +71,7 @@ struct PlaneProfile {
     bool hasUsed;               // Fuel used
     bool hasHp;
     bool hasDif;                // EGT differential (hottest - coldest)
+    bool hasColdRate;                
 
     // --- Gauge ranges ---
     // Each GaugeRangeDef holds the scale range, redline, and color bands
@@ -90,8 +95,22 @@ struct PlaneProfile {
     GaugeRangeDef cdt;
     GaugeRangeDef iat;
     GaugeRangeDef dif;
+    GaugeRangeDef req;
+    GaugeRangeDef coldRate;
 
     // Note: fuelCapacity is in EngineState, not here — it's a sim-reported
     // value, not a profile constant.  setupGauges() patches fuelRem.max
     // from curState.fuelCapacity at runtime.
+
+    // --- Availability lookup by DisplayVarId ---
+    // Single source of truth for mapping a DisplayVarId to its has* flag.
+    // This eliminates duplicate switch statements in DisplayParams and
+    // DisplayConfig — any code that needs to check "does this profile
+    // support variable X?" calls this instead of switching on has* itself.
+    //
+    // Note: this is a member function on a struct full of const instances,
+    // which works fine in C++ — the compiler just passes a hidden `this`
+    // pointer.  Since the profiles live in flash, the `this` pointer
+    // points to flash, and the bool fields are read directly from there.
+    bool isAvailable(DisplayVarId id) const;
 };

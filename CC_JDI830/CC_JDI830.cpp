@@ -3,7 +3,6 @@
 #include "commandmessenger.h"
 
 #include <Arduino.h>
-#include <algorithm>
 
 // Font includes
 #include "Fonts/SevenSeg42.h"
@@ -42,9 +41,12 @@ void CC_JDI830::setupRightBars() {
     int barY = -20;
     int barYSpacing = 34;
 
-    for (int i = 0; i < NUM_RIGHT_BAR_SLOTS; i++) {
-        DisplayVarInfo info = resolveDisplayVar(
-            rightBarSelections[i], p, curState);
+    // for (int i = 0; i < NUM_RIGHT_BAR_SLOTS; i++) {
+    for (int i = 0; i < _displayCfg.numRightBarSlots ; i++) {
+
+
+        // DisplayVarInfo info = resolveDisplayVar(rightBarSelections[i], p, curState);
+        DisplayVarInfo info = resolveDisplayVar(_displayCfg.rightBarSelections[i], p, curState);
 
         HBarGauge& bar = _rightBars[i];
         bar.clearColorRanges();
@@ -58,7 +60,7 @@ void CC_JDI830::setupRightBars() {
             applyRangeDef(bar, *info.range);
 
             // Special case: FUEL_REM range max comes from the sim, not the profile
-            if (rightBarSelections[i] == DisplayVarId::FUEL_REM) {
+            if (_displayCfg.rightBarSelections[i] == DisplayVarId::FUEL_REM) {
                 bar.setRange(0, curState.fuelCapacity);
             }
         }
@@ -98,14 +100,16 @@ void CC_JDI830::setupGauges() {
     }
 
     // --- %HP Value Gauge ---
-    _hpPct.setPosition(2, 185);
-    _hpPct.setLabel("% HP");
-    _hpPct.setValuePtr(&curState.hp);
-    _hpPct.setValueFont(ArialN16);
-    _hpPct.setLabelFont(ArialN11);
-    _hpPct.setValueColor(TFT_WHITE);
-    _hpPct.setLayout(35, LABEL_RIGHT);
-    _hpPct.init(90, 20);
+    if (p.hasHp) {
+        _hpPct.setPosition(2, 185);
+        _hpPct.setLabel("% HP");
+        _hpPct.setValuePtr(&curState.hp);
+        _hpPct.setValueFont(ArialN16);
+        _hpPct.setLabelFont(ArialN11);
+        _hpPct.setValueColor(TFT_WHITE);
+        _hpPct.setLayout(35, LABEL_RIGHT);
+        _hpPct.init(90, 20);
+    }
 
     // --- HBar Gauges (right column) — configured from rightBarSelections[] ---
     setupRightBars();
@@ -136,12 +140,12 @@ void CC_JDI830::setupGauges() {
     if (p.hasTit2) {
         _egtChtBars.addTit(&curState.tit2, "T2");
     }
-    _egtChtBars.init(310, 165);  // computeLayout() handles everything
+    _egtChtBars.init((p.numCylinders == 6) ? 310: 205, 165);  // computeLayout() handles everything
 
     // --- Bottom bar ---
     _numBottomPages = buildBottomPages(_bottomPages, p, curState);
     _bottomBar.setPosition(5, 380);
-    _bottomBar.setMessageFont(ArialNI16);
+    _bottomBar.setMessageFont(ArialNI36);
     _bottomBar.init(310, 45);
     if (_numBottomPages > 0)
         _bottomBar.setPage(_bottomPages[0]);
@@ -158,11 +162,27 @@ void CC_JDI830::setProfile(int index) {
     if (index < 0 || index >= NUM_PROFILES) return;
     if (index == _profileIndex) return;       // no-op if unchanged
 
+    _lcd.fillScreen(TFT_BLACK);
+    // Erase right-bar gauges that may not exist in the new layout.
+    // Must happen before we rebuild _displayCfg, while the old slot count
+    // is still valid.
+    int oldSlots = _displayCfg.numRightBarSlots;
+
     _profileIndex = index;
     activeProfile = ALL_PROFILES[index];
-    Serial.printf("Profile changed to: %s\n", activeProfile->name);
+
+    _displayCfg = buildDefaultConfig(*activeProfile);
+
+    // If the new layout has fewer slots, erase the ones that are going away
+    // for (int i = _displayCfg.numRightBarSlots; i < oldSlots; i++)
+    //     _rightBars[i].erase();
 
     setupGauges();
+
+    // Build the alarm table for this profile — pointers into curState
+    // and the new profile are captured so scan() can check them each frame.
+    _alarmMgr.buildAlarms(*activeProfile, curState);
+    _bottomBarMode = BottomBarMode::ALL_DATA;
 
     // setupGauges() reconfigures ranges/colors/labels but the float
     // values haven't changed, so the base Gauge::update() won't see
@@ -172,12 +192,13 @@ void CC_JDI830::setProfile(int index) {
     _hpPct.forceDirty();
     _egtChtBars.forceDirty();
     _bottomBar.forceDirty();
-    for (int i = 0; i < NUM_RIGHT_BAR_SLOTS; i++)
+    for (int i = 0; i < _displayCfg.numRightBarSlots; i++)
         _rightBars[i].forceDirty();
 }
 
 void CC_JDI830::drawStatic() {
-    _lcd.drawLine(6,93, 163, 93, TFT_DARKGRAY);
+    _lcd.drawLine(6,93, 163, 93, TFT_LIGHTGRAY);
+    _lcd.drawLine(6,94, 163, 94, TFT_LIGHTGRAY);
 }
 
 CC_JDI830::CC_JDI830(uint8_t sclk, uint8_t mosi, uint8_t dc, uint8_t cs, uint8_t rst, uint8_t bl)
@@ -195,16 +216,14 @@ void CC_JDI830::begin()
     // Apply pin config from MobiFlight before initializing the display hardware
     _lcd.configurePins(_pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL);
 
-    Serial.printf("sclk: %d mosi: %d dc: %d cs: %d rst: %d bl: %d\n", _pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL);
+    // Serial.printf("sclk: %d mosi: %d dc: %d cs: %d rst: %d bl: %d\n", _pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL);
 
     _lcd.init();
     _lcd.setRotation(0);  // portrait mode, 320x480
     _lcd.fillScreen(TFT_BLACK);
 
-    Serial.begin(115200);
-
     // Load default profile (later: read saved index from NVS here)
-    setProfile(0);
+    setProfile(2);
 
     drawStatic();
 }
@@ -242,19 +261,33 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
         break;
 
     case 0: {
-        // EGT — either "val1|val2|...|valN" per cylinder, or a single value
-        int nCyl = activeProfile->numCylinders;
-        if (strchr(setPoint, '|')) {
-            char* tok = strtok(setPoint, "|");
-            for (int i = 0; i < nCyl && tok != nullptr; i++) {
-                curState.egt[i] = strtof(tok, nullptr);
-                tok = strtok(nullptr, "|");
+        // EGT — either "val1|val2|...|valN" per cylinder, or a single value.
+        // When the profile says the sim only reports one EGT, stash it in
+        // egtRaw and let spreadCylinders() build the per-cylinder array.
+        // When the sim sends real per-cylinder data, write directly.
+       cmdMessenger.sendCmd(kStatus,setPoint);
+       int nCyl = activeProfile->numCylinders;
+       if (strchr(setPoint, '|')) {
+           char* tok = strtok(setPoint, "|");
+           for (int i = 0; i < nCyl && tok != nullptr; i++) {
+                Serial.printf("tok %d:%s\n",i, tok);
+               curState.egt[i] = strtof(tok, nullptr);
+               tok = strtok(nullptr, "|");
+               Serial.printf("token %d: %f\n",i, curState.egt[i]);
             }
         } else {
             float val = strtof(setPoint, nullptr);
-            for (int i = 0; i < nCyl; i++)
-                curState.egt[i] = val;
+            if (activeProfile->reportsSingleEgtCht) {
+                curState.egtRaw = val;
+            } else {
+                // Profile expects per-cylinder data but we only got one value.
+                // Write to cyl 0 only so the lopsided display makes it obvious
+                // something's misconfigured.
+                curState.egt[0] = val;
+            }
         }
+        char buf[255];
+        sprintf(buf, "1: %f 2:%f 3:%f 4:%f 5:%f 6:%f\n", curState.egt[0],curState.egt[1],curState.egt[2],curState.egt[3],curState.egt[4],curState.egt[5]);
         break;
     }
 
@@ -269,8 +302,11 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
             }
         } else {
             float val = strtof(setPoint, nullptr);
-            for (int i = 0; i < nCyl; i++)
-                curState.cht[i] = val;
+            if (activeProfile->reportsSingleEgtCht) {
+                curState.chtRaw = val;
+            } else {
+                curState.cht[0] = val;
+            }
         }
         break;
     }
@@ -348,9 +384,27 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
     }
 }
 
+void CC_JDI830::updateCalculatedFields()
+{
+    int nCyl = activeProfile->numCylinders;
+
+    // If the sim only reports a single EGT/CHT, generate fake per-cylinder
+    // values from the raw sim input before computing peaks/diffs.
+    if (activeProfile->reportsSingleEgtCht) {
+        curState.spreadCylinders(nCyl,
+                                 curState.egtRaw, curState.chtRaw,
+                                 activeProfile->fakeCylSpreadPct);
+    }
+
+    curState.updateCalculated(nCyl);
+}
+
 void CC_JDI830::update()
 {
     uint32_t now = millis();
+
+    // Recompute all derived fields (peaks, diffs, fuel calcs, fake cylinders)
+    updateCalculatedFields();
 
     // Update simulated values every 100ms for demo purposes
     /* if (now - _lastUpdate > 200) {
@@ -399,20 +453,119 @@ void CC_JDI830::update()
 //        _egtChtBars.setSelectedCylinder(curState.chtPeakCyl);
     }
 */
-    // Auto-rotate bottom bar pages
-    if (now - _lastPageChange > PAGE_ROTATE_MS) {
-        _lastPageChange = now;
-        _currentBottomPage = (_currentBottomPage + 1) % _numBottomPages;
-        _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+
+    // --- Bottom bar mode dispatch ---
+    // In data modes, scan for alarms each frame.  If one fires, save the
+    // current mode and switch to ALARM.  In ALARM mode, keep scanning —
+    // if the condition clears (and isn't dismissed), restore the previous
+    // data mode so page rotation resumes.
+    //
+    // The `switch` here is the idiomatic C++ way to dispatch on an enum
+    // class.  Each case handles one mode's behavior.  LEAN/SETUP are
+    // stubs — they just break (do nothing) so alarms don't interrupt
+    // those future features.
+    switch (_bottomBarMode) {
+        case BottomBarMode::ALL_DATA:
+        case BottomBarMode::FUEL_DATA:
+        case BottomBarMode::CYLINDER_DETAIL:
+            // Scan for alarms while in a data-display mode
+            if (_alarmMgr.scan(now)) {
+                _prevDataMode = _bottomBarMode;
+                _bottomBarMode = BottomBarMode::ALARM;
+                _alarmMgr.formatAlarm(_alarmBuf, sizeof(_alarmBuf));
+                _bottomBar.showMessage(_alarmBuf, TFT_RED);
+            } else {
+                // No alarm — auto-rotate pages as before
+                if (now - _lastPageChange > PAGE_ROTATE_MS) {
+                    _lastPageChange = now;
+                    _currentBottomPage = (_currentBottomPage + 1) % _numBottomPages;
+                    _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+                }
+            }
+            break;
+
+        case BottomBarMode::ALARM:
+            // Re-scan each frame: alarm may clear if value returns to normal
+            if (_alarmMgr.scan(now)) {
+                // Still alarming — update the message (value may have changed)
+                _alarmMgr.formatAlarm(_alarmBuf, sizeof(_alarmBuf));
+                _bottomBar.showMessage(_alarmBuf, TFT_RED);
+            } else {
+                // Alarm cleared — restore previous data mode
+                _bottomBarMode = _prevDataMode;
+                _bottomBar.clearMessage();
+                _lastPageChange = now;  // reset rotation timer
+            }
+            break;
+
+        case BottomBarMode::LEAN:
+        case BottomBarMode::SETUP:
+            // Future modes — no alarm scanning while active
+            break;
     }
 
     // Update all gauges — each one only redraws if its value changed
     _rpmGauge.update();
     if (activeProfile->hasMap) _mapGauge.update();
-    for (int i = 0; i < NUM_RIGHT_BAR_SLOTS; i++) _rightBars[i].update();
+    for (int i = 0; i < _displayCfg.numRightBarSlots; i++) _rightBars[i].update();
     _egtChtBars.update();
 
     _bottomBar.update();
     _hpPct.update();
 
+}
+
+// ---------------------------------------------------------------------------
+// onStepPress — short press of the STEP button.
+//
+// If an alarm is showing, dismiss it for 10 minutes (the next-priority
+// alarm will appear if one exists).  Otherwise, advance the bottom bar
+// to the next page in the current data mode's rotation.
+//
+// Call this from whichever input source you end up using — physical
+// button ISR, MobiFlight set() message, etc.
+// ---------------------------------------------------------------------------
+void CC_JDI830::onStepPress() {
+    if (_bottomBarMode == BottomBarMode::ALARM && _alarmMgr.hasActiveAlarm()) {
+        _alarmMgr.dismissTimed(millis());
+
+        // Immediately re-scan: if another alarm is pending it takes over,
+        // otherwise we drop back to the data mode.
+        if (_alarmMgr.scan(millis())) {
+            _alarmMgr.formatAlarm(_alarmBuf, sizeof(_alarmBuf));
+            _bottomBar.showMessage(_alarmBuf, TFT_RED);
+        } else {
+            _bottomBarMode = _prevDataMode;
+            _bottomBar.clearMessage();
+            _lastPageChange = millis();
+        }
+    } else if (_bottomBarMode != BottomBarMode::ALARM) {
+        // Advance to next page in current rotation
+        if (_numBottomPages > 0) {
+            _currentBottomPage = (_currentBottomPage + 1) % _numBottomPages;
+            _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+            _lastPageChange = millis();
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// onStepLongPress — long press of the STEP button.
+//
+// Permanently dismisses the current alarm (until power cycle / profile
+// change).  If another alarm is pending, it appears immediately.
+// ---------------------------------------------------------------------------
+void CC_JDI830::onStepLongPress() {
+    if (_bottomBarMode == BottomBarMode::ALARM && _alarmMgr.hasActiveAlarm()) {
+        _alarmMgr.dismissPermanent();
+
+        if (_alarmMgr.scan(millis())) {
+            _alarmMgr.formatAlarm(_alarmBuf, sizeof(_alarmBuf));
+            _bottomBar.showMessage(_alarmBuf, TFT_RED);
+        } else {
+            _bottomBarMode = _prevDataMode;
+            _bottomBar.clearMessage();
+            _lastPageChange = millis();
+        }
+    }
 }

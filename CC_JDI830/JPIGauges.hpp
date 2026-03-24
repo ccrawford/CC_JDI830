@@ -139,6 +139,14 @@ public:
     // Force a full redraw on next update (e.g. after screen clear)
     void forceDirty() { _dirty = true; }
 
+    // Erase this gauge from the display by filling its sprite black and
+    // pushing it.  Use when removing gauges (e.g. shrinking slot count).
+    void erase() {
+        _sprite.fillSprite(TFT_BLACK);
+        _sprite.pushSprite(_x, _y);
+        _dirty = false;
+    }
+
     // Called each frame. Checks if value changed, redraws if needed,
     // and pushes sprite to display.
     virtual void update()

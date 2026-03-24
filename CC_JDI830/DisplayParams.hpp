@@ -14,8 +14,9 @@
 // To add a new variable:
 //   1. Add an entry to DisplayVarId (before COUNT)
 //   2. Add a case in resolveDisplayVar() with label, range, pointer, decimals
-//   3. If it needs a GaugeRangeDef, add one in PlaneProfile and PlaneProfiles
-//   4. If it needs a value, add a float in EngineState
+//   3. Add a case in PlaneProfile::isAvailable()
+//   4. If it needs a GaugeRangeDef, add one in PlaneProfile and PlaneProfiles
+//   5. If it needs a value, add a float in EngineState
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -34,9 +35,43 @@ enum class DisplayVarId : uint8_t {
     IAT,
     EGT_DIF,
     MAP,
+    FUEL_REQ,
+    COLD,
+    FUEL_USED,
     // ---
     COUNT          // must be last — gives the total number of variables
 };
+
+// ---------------------------------------------------------------------------
+// PlaneProfile::isAvailable — single source of truth for "does this profile
+// support variable X?"
+//
+// Defined here (not in PlaneProfile.hpp) because it needs the full
+// DisplayVarId enum, and DisplayParams.hpp already includes PlaneProfile.hpp.
+// This is a common C++ pattern for breaking circular dependencies: you
+// *declare* a method in the struct's header, then *define* it in a later
+// header that has visibility of the types it needs.
+// ---------------------------------------------------------------------------
+inline bool PlaneProfile::isAvailable(DisplayVarId id) const {
+    switch (id) {
+        case DisplayVarId::OIL_TEMP:   return hasOilT;
+        case DisplayVarId::OIL_PRESS:  return hasOilP;
+        case DisplayVarId::BATTERY:    return hasBat;
+        case DisplayVarId::OAT:        return hasOat;
+        case DisplayVarId::FUEL_FLOW:  return hasFf;
+        case DisplayVarId::FUEL_REM:   return hasFuelRem;
+        case DisplayVarId::HP:         return hasHp;
+        case DisplayVarId::CARB_TEMP:  return hasCrb;
+        case DisplayVarId::CDT:        return hasCdt;
+        case DisplayVarId::IAT:        return hasIat;
+        case DisplayVarId::EGT_DIF:    return hasDif;
+        case DisplayVarId::MAP:        return hasMap;
+        case DisplayVarId::FUEL_REQ:   return hasReq;
+        case DisplayVarId::FUEL_USED:  return hasUsed;
+        case DisplayVarId::COLD:       return hasColdRate;  // TODO: add hasCold to PlaneProfile
+        default:                       return false;
+    }
+}
 
 // ---------------------------------------------------------------------------
 // DisplayVarInfo — resolved description of one displayable variable.
@@ -57,36 +92,45 @@ struct DisplayVarInfo {
 //
 // Returns a DisplayVarInfo with `available = false` if the active profile
 // doesn't support the requested measurement (e.g. CARB_TEMP on a turbo plane).
+//
+// The `available` field comes from prof.isAvailable() — one place to maintain.
 // ---------------------------------------------------------------------------
 inline DisplayVarInfo resolveDisplayVar(DisplayVarId id,
                                         const PlaneProfile& prof,
                                         EngineState& state) {
+    bool avail = prof.isAvailable(id);
     //                  label    range           valuePtr         dec  available
     switch (id) {
         case DisplayVarId::OIL_TEMP:
-            return { "O-T",   &prof.oilT,    &state.oilT,    0, prof.hasOilT };
+            return { "O-T",   &prof.oilT,    &state.oilT,    0, avail };
         case DisplayVarId::OIL_PRESS:
-            return { "O-P",   &prof.oilP,    &state.oilP,    0, prof.hasOilP };
+            return { "O-P",   &prof.oilP,    &state.oilP,    0, avail };
         case DisplayVarId::BATTERY:
-            return { "BAT",   &prof.bat,     &state.bat,     1, prof.hasBat };
+            return { "BAT",   &prof.bat,     &state.bat,     1, avail };
         case DisplayVarId::OAT:
-            return { "OAT-C", &prof.oat,     &state.oat,     1, prof.hasOat };
+            return { "OAT-C", &prof.oat,     &state.oat,     1, avail };
         case DisplayVarId::FUEL_FLOW:
-            return { "GPH",   &prof.ff,      &state.ff,      1, prof.hasFf };
+            return { "GPH",   &prof.ff,      &state.ff,      1, avail };
         case DisplayVarId::FUEL_REM:
-            return { "REM",   &prof.fuelRem, &state.fuelRem, 1, prof.hasFuelRem };
+            return { "REM",   &prof.fuelRem, &state.fuelRem, 1, avail };
         case DisplayVarId::HP:
-            return { "HP",    &prof.hp,      &state.hp,      0, prof.hasHp };
+            return { "HP",    &prof.hp,      &state.hp,      0, avail };
         case DisplayVarId::CARB_TEMP:
-            return { "CRB",   &prof.crb,     &state.crb,     0, prof.hasCrb };
+            return { "CRB",   &prof.crb,     &state.crb,     0, avail };
         case DisplayVarId::CDT:
-            return { "CDT",   &prof.cdt,     &state.cdt,     0, prof.hasCdt };
+            return { "CDT",   &prof.cdt,     &state.cdt,     0, avail };
         case DisplayVarId::IAT:
-            return { "IAT",   &prof.iat,     &state.iat,     0, prof.hasIat };
+            return { "IAT",   &prof.iat,     &state.iat,     0, avail };
         case DisplayVarId::EGT_DIF:
-            return { "DIF",   &prof.dif,     &state.dif,     0, prof.hasDif };
+            return { "DIF",   &prof.dif,     &state.dif,     0, avail };
         case DisplayVarId::MAP:
-            return { "MAP",   &prof.map,     &state.map,     1, prof.hasMap };
+            return { "MAP",   &prof.map,     &state.map,     1, avail };
+        case DisplayVarId::FUEL_REQ:
+            return { "REQ",   &prof.req,     &state.req,     1, avail };
+        case DisplayVarId::FUEL_USED:
+            return { "USD",   &prof.used,    &state.used,    1, avail };
+        case DisplayVarId::COLD:
+            return { "CLD",   &prof.coldRate,    &state.coldRate,    0, avail };
         default:
             return { "???",   nullptr,       nullptr,        0, false };
     }
@@ -114,32 +158,10 @@ inline int getAvailableDisplayVars(DisplayVarId* out,
                                    EngineState& state) {
     int n = 0;
     for (uint8_t i = 0; i < (uint8_t)DisplayVarId::COUNT; i++) {
-        DisplayVarInfo info = resolveDisplayVar((DisplayVarId)i, prof, state);
-        if (info.available) {
-            out[n++] = (DisplayVarId)i;
+        auto id = (DisplayVarId)i;
+        if (prof.isAvailable(id)) {
+            out[n++] = id;
         }
     }
     return n;
-}
-
-// ---------------------------------------------------------------------------
-// getDisplayVarLabel — returns the display label for a variable ID.
-// Handy for a selection menu without needing the full resolve.
-// ---------------------------------------------------------------------------
-inline const char* getDisplayVarLabel(DisplayVarId id) {
-    switch (id) {
-        case DisplayVarId::OIL_TEMP:   return "O-T";
-        case DisplayVarId::OIL_PRESS:  return "O-P";
-        case DisplayVarId::BATTERY:    return "BAT";
-        case DisplayVarId::OAT:        return "OAT-C";
-        case DisplayVarId::FUEL_FLOW:  return "GPH";
-        case DisplayVarId::FUEL_REM:   return "REM";
-        case DisplayVarId::HP:         return "HP";
-        case DisplayVarId::CARB_TEMP:  return "CRB";
-        case DisplayVarId::CDT:        return "CDT";
-        case DisplayVarId::IAT:        return "IAT";
-        case DisplayVarId::EGT_DIF:    return "DIF";
-        case DisplayVarId::MAP:        return "MAP";
-        default:                       return "???";
-    }
 }

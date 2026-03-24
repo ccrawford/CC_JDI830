@@ -53,20 +53,21 @@ static const PlaneProfile PROFILE_A2A_COMANCHE = {
     .hasUsed      = true,
     .hasHp        = true,
     .hasDif       = true,
+    .hasColdRate  = true,
 
     // --- Gauge ranges ---
-    .rpm     = { 0, 2900, 2700,    { {0, 2700, TFT_GREEN}, {2700, 2900, TFT_RED} }, 2 },
-    .map     = { 15, 33, 32,       { {15, 32, TFT_GREEN}, {32, 33, TFT_RED} }, 2 },
+    .rpm     = { 0, 2900, 2580,    { {0, 2580, TFT_GREEN}, {2580, 2900, TFT_RED} }, 2 },
+    .map     = { 15, 33, 31,       { {15, 31, TFT_GREEN}, {31, 33, TFT_RED} }, 2 },
     .oilT    = { 100, 250, 0,      { {100, 120, TFT_RED}, {120, 220, TFT_GREEN}, {220, 250, TFT_RED} }, 3 },
-    .oilP    = { 0, 115, 100,      { {0, 25, TFT_RED}, {25, 100, TFT_GREEN}, {100, 115, TFT_RED} }, 3 },
-    .bat     = { 20, 32, 0,        { {20, 22, TFT_RED}, {22, 30, TFT_GREEN}, {30, 32, TFT_RED} }, 3 },
+    .oilP    = { 0, 115, 20,      { {0, 20, TFT_RED}, {20, 120, TFT_GREEN} }, 2 },
+    .bat     = { 12, 16, 0,        { {11, 12, TFT_RED}, {12, 14, TFT_GREEN}, {14, 16, TFT_RED} }, 3 },
     .oat     = { -20, 50, 0,       { {-20, 50, TFT_GREEN} }, 1 },
     .egt     = { 850, 1700, 1650,  { {0, 1650, TFT_WHITE}, {1650, 2600, TFT_RED} }, 2 },
-    .cht     = { 200, 600, 450,    { {0, 450, TFT_WHITE}, {450, 1000, TFT_RED} }, 2 },
+    .cht     = { 200, 600, 400,    { {0, 400, TFT_WHITE}, {400, 1000, TFT_RED} }, 2 },
     .tit1    = {},                  // no TIT
     .tit2    = {},
-    .ff      = { 0, 30, 0,         { {0, 5, TFT_RED}, {5, 25, TFT_GREEN} }, 2 },
-    .fuelRem = { 0, 70, 0,         { {0, 70, TFT_GREEN} }, 1 },  // max patched from sim at runtime
+    .ff      = { 0, 30, 0,         { {0, 2.5, TFT_RED}, {2.5, 30, TFT_GREEN} }, 2 },
+    .fuelRem = { 0, 70, 0,         { {0, 10, TFT_RED}, {10, 70, TFT_GREEN} }, 2 },  // max patched from sim at runtime
     .used    = { 0, 9999, 0,       { {0, 9999, TFT_GREEN} }, 1},
     .endurance = { 0, 9999, 0,     { {0, 20, TFT_RED}, {20, 9999, TFT_GREEN} }, 2},
     .hp      = { 0, 100, 0,        { {0, 100, TFT_WHITE} }, 1 },
@@ -74,6 +75,7 @@ static const PlaneProfile PROFILE_A2A_COMANCHE = {
     .cdt     = {},
     .iat     = {},
     .dif     = { 0, 500, 0,        { {0, 300, TFT_GREEN}, {300, 500, TFT_RED} }, 2 },
+    .coldRate= { 0, 100, 60,        { {0, 40, TFT_GREEN}, {40,60, TFT_YELLOW}, {60,200, TFT_RED} }, 3 },
 };
 
 // ---------------------------------------------------------------------------
@@ -111,6 +113,7 @@ static const PlaneProfile PROFILE_CESSNA_T206H = {
     .hasUsed      = true,
     .hasHp        = true,
     .hasDif       = true,
+    .hasColdRate  = true,
 
     // --- Gauge ranges ---
     .rpm     = { 0, 2900, 2700,    { {0, 2700, TFT_GREEN}, {2700, 2900, TFT_RED} }, 2 },
@@ -123,8 +126,8 @@ static const PlaneProfile PROFILE_CESSNA_T206H = {
     .cht     = { 200, 600, 450,    { {0, 450, TFT_WHITE}, {450, 1000, TFT_RED} }, 2 },
     .tit1    = { 850, 1700, 1650,  { {0, 1650, TFT_CYAN}, {1650, 2000, TFT_RED} }, 2 },
     .tit2    = { 850, 1700, 1650,  { {0, 1650, TFT_CYAN}, {1650, 2000, TFT_RED} }, 2 },
-    .ff      = { 0, 30, 0,         { {0, 5, TFT_RED}, {5, 25, TFT_GREEN} }, 2 },
-    .fuelRem = { 0, 92, 0,         { {0, 5, TFT_RED}, {0, 92, TFT_GREEN} }, 2 },
+    .ff      = { 0, 30, 0,         { {0, 5, TFT_RED}, {5, 30, TFT_GREEN} }, 2 },
+    .fuelRem = { 0, 92, 0,         { {0, 5, TFT_RED}, {5, 92, TFT_GREEN} }, 2 },
     .used    = { 0, 9999, 0,       { {0, 9999, TFT_GREEN} }, 1},
     .endurance = { 0, 9999, 0,     { {0, 20, TFT_RED}, {20, 9999, TFT_GREEN} }, 2},
     .hp      = { 0, 100, 0,        { {0, 100, TFT_WHITE} }, 1 },
@@ -132,6 +135,7 @@ static const PlaneProfile PROFILE_CESSNA_T206H = {
     .cdt     = { 0, 500, 450,      { {0, 400, TFT_GREEN}, {400, 450, TFT_YELLOW}, {450, 500, TFT_RED} }, 3 },
     .iat     = { 0, 300, 250,      { {0, 200, TFT_GREEN}, {200, 250, TFT_YELLOW}, {250, 300, TFT_RED} }, 3 },
     .dif     = { 0, 500, 0,        { {0, 300, TFT_GREEN}, {300, 500, TFT_RED} }, 2 },
+    .coldRate= { 0, 100, 60,        { {0, 40, TFT_GREEN}, {40,60, TFT_YELLOW}, {60,200, TFT_RED} }, 3 },
 };
 
 // ---------------------------------------------------------------------------
@@ -145,7 +149,7 @@ static const PlaneProfile PROFILE_CESSNA_172S = {
 
     .numCylinders         = 4,
     .reportsSingleEgtCht  = true,
-    .fakeCylSpreadPct     = 0.12f,  // fake cylinders 88-100% of reported peak
+    .fakeCylSpreadPct     = 0.09f,  // fake cylinders ~91-100% of reported peak (carb: ~126°F DIF at 1400 EGT)
 
     // --- Availability ---
     .hasEgt       = true,
@@ -159,30 +163,31 @@ static const PlaneProfile PROFILE_CESSNA_172S = {
     .hasCrb       = true,      // carbureted
     .hasCdt       = false,
     .hasIat       = false,
-    .hasMap       = false,     // no MAP gauge on a 172
-    .hasFf       = true,
+    .hasMap       = true,     
+    .hasFf        = true,
     .hasFuelRem   = true,
     .hasReq       = true,
     .hasRes       = true,
     .hasMpg       = true,
     .hasEndurance = true,
     .hasUsed      = true,
-    .hasHp        = true,
+    .hasHp        = false,
     .hasDif       = true,
+    .hasColdRate  = true,
 
     // --- Gauge ranges ---
     .rpm     = { 0, 2800, 2700,    { {0, 2700, TFT_GREEN}, {2700, 2800, TFT_RED} }, 2 },
     .map     = {},
-    .oilT    = { 100, 250, 0,      { {100, 120, TFT_RED}, {120, 220, TFT_GREEN}, {220, 250, TFT_RED} }, 3 },
+    .oilT    = { 100, 250, 0,      { {100, 120, TFT_RED}, {120, 220, TFT_GREEN}, {220, 350, TFT_RED} }, 3 },
     .oilP    = { 0, 115, 100,      { {0, 25, TFT_RED}, {25, 100, TFT_GREEN}, {100, 115, TFT_RED} }, 3 },
     .bat     = { 20, 32, 0,        { {20, 22, TFT_RED}, {22, 30, TFT_GREEN}, {30, 32, TFT_RED} }, 3 },
     .oat     = { -20, 50, 0,       { {-20, 50, TFT_GREEN} }, 1 },
-    .egt     = { 800, 1600, 1500,  { {0, 1500, TFT_WHITE}, {1500, 2000, TFT_RED} }, 2 },
-    .cht     = { 200, 500, 400,    { {0, 400, TFT_WHITE}, {400, 700, TFT_RED} }, 2 },
+    .egt     = { 800, 1700, 1550,  { {0, 1550, TFT_WHITE}, {1550, 2000, TFT_RED} }, 2 },
+    .cht     = { 200, 600, 400,    { {0, 400, TFT_WHITE}, {400, 600, TFT_RED} }, 2 },
     .tit1    = {},
     .tit2    = {},
     .ff      = { 0, 20, 0,         { {0, 3, TFT_RED}, {3, 15, TFT_GREEN} }, 2 },
-    .fuelRem = { 0, 56, 0,         { {0, 56, TFT_GREEN} }, 1 },
+    .fuelRem = { 0, 56, 0,         { {0, 8, TFT_RED}, {8, 56, TFT_GREEN} }, 2 },
     .used    = { 0, 9999, 0,       { {0, 9999, TFT_GREEN} }, 1},
     .endurance = { 0, 9999, 0,       { {0, 20, TFT_RED}, {20, 9999, TFT_GREEN} }, 2},
     .hp      = { 0, 100, 0,        { {0, 100, TFT_WHITE} }, 1 },
@@ -190,6 +195,7 @@ static const PlaneProfile PROFILE_CESSNA_172S = {
     .cdt     = {},
     .iat     = {},
     .dif     = { 0, 400, 0,        { {0, 200, TFT_GREEN}, {200, 400, TFT_RED} }, 2 },
+    .coldRate= { 0, 100, 60,        { {0, 40, TFT_GREEN}, {40,60, TFT_YELLOW}, {60,200, TFT_RED} }, 3 },
 };
 
 // ---------------------------------------------------------------------------
