@@ -112,7 +112,22 @@
       {
         "id": 18,
         "label": "Plane Profile #",
-        "description": "Plane Profile #. 1: A2A Comanche, 2: Cessna T206H, 3: Generic C172"
+        "description": "Plane Profile #. 0: A2A Comanche, 1: Cessna T206H, 2: Generic C172"
+      },
+      {
+        "id": 19,
+        "label": "Show Normalized Mode",
+        "description": "0: Standard mode for EGT, 1: Normalized Mode for EGT"
+      },
+      {
+        "id": 20,
+        "label": "Step Button State",
+        "description": "1 for button down, 0 for button released. Use a MF variable in the input"
+      },
+      {
+        "id": 21,
+        "label": "LF Button State",
+        "description": "1 for button down, 0 for button released. Use a MF variable in the input"
       }
 
     ]

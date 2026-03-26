@@ -87,6 +87,13 @@ private:
     const uint8_t *_valueFont; // font for numeric values drawn above the bars
     bool _showValues;          // whether to draw EGT/CHT numbers above the bars
 
+    // --- Normalize mode (EGT only) ---
+    // When active, all EGT bars are drawn at half chart height (the "baseline"),
+    // and deviations from the snapshot are shown as segment changes.
+    // Each segment = 10°F of change. CHT/TIT are unaffected.
+    bool _normalizeMode;
+    float _nrmBaseline[MAX_CYLINDERS]; // EGT snapshot taken when normalize is activated
+
 protected:
     void drawGauge() override
     {
@@ -100,6 +107,9 @@ protected:
         drawCylinderLabels();
         if (_numTit > 0)
             drawRightScale();
+
+        // NRM indicator has moved to the StatusBar center indicator.
+        // ColumnBarGauge no longer draws it.
     }
 
 private:
@@ -210,8 +220,41 @@ private:
 
             // EGT bar (left bar in each pair)
             float egtVal = _egtPtrs[cyl] ? *_egtPtrs[cyl] : 0;
-            dispColor = egtVal >= _egtRedline ? TFT_RED : _egtColor;
-            drawSegmentedBar(colX, egtVal, _egtMin, _egtMax, dispColor);
+
+            if (_normalizeMode)
+            {
+                // Normalize view: build a synthetic scale where the baseline
+                // maps to half chart height and each segment = 10°F deviation.
+                //
+                // How it works:
+                //   segStep      = pixels per segment (block height + gap)
+                //   totalSegs    = how many segments fit in the chart height
+                //   fullScale    = totalSegs * 10°F (full scale in degrees)
+                //   midValue     = fullScale / 2  (baseline sits at half height)
+                //   syntheticVal = midValue + (currentEgt - baseline)
+                //
+                // We then call drawSegmentedBar() with [0, fullScale] as the
+                // scale, so mapValue() maps midValue to the chart midpoint.
+                int16_t segStep   = _barHeight + BLOCK_GAP;
+                int     totalSegs = (_chartBottom - _chartTop) / segStep;
+                float   fullScale = totalSegs * 10.0f;
+                float   midValue  = fullScale / 2.0f;
+
+                float deviation = egtVal - _nrmBaseline[cyl];
+                float synVal    = midValue + deviation;
+
+                // Clamp to scale bounds so drawSegmentedBar doesn't overflow
+                if (synVal < 0.0f)      synVal = 0.0f;
+                if (synVal > fullScale)  synVal = fullScale;
+
+                // No redline coloring in normalize mode (deviation display)
+                drawSegmentedBar(colX, synVal, 0.0f, fullScale, _egtColor);
+            }
+            else
+            {
+                dispColor = egtVal >= _egtRedline ? TFT_RED : _egtColor;
+                drawSegmentedBar(colX, egtVal, _egtMin, _egtMax, dispColor);
+            }
 
             // CHT bar (right bar in each pair)
             float chtVal = _chtPtrs[cyl] ? *_chtPtrs[cyl] : 0;
@@ -437,7 +480,8 @@ public:
           _scaleWidth(35), _rightScaleWidth(0), _labelAreaHeight(24), _valueAreaHeight(0),
           _selectedCylinder(-1), _scaleFont(nullptr), _labelFont(nullptr),
           _egtColor(TFT_BLUE), _chtColor(TFT_CYAN), _egtPeakColor(TFT_RED),
-          _valueFont(nullptr), _showValues(false)
+          _valueFont(nullptr), _showValues(false),
+          _normalizeMode(false)
     {
         for (int i = 0; i < MAX_CYLINDERS; i++)
         {
@@ -445,6 +489,7 @@ public:
             _chtPtrs[i] = nullptr;
             _prevEgt[i] = -99999.0f;
             _prevCht[i] = -99999.0f;
+            _nrmBaseline[i] = 0.0f;
         }
         for (int i = 0; i < MAX_TIT; i++)
         {
@@ -474,6 +519,25 @@ public:
         _selectedCylinder = cyl;
         _dirty = true;
     }
+
+    // --- EGT Normalize mode ---
+    // When switching to normalize, snapshot all current EGT values as the
+    // baseline. All EGT bars will then display at half chart height, with
+    // deviations shown as segment changes (1 segment = 10°F).
+    // CHT, TIT, and numeric value labels are unaffected.
+    void setNormalize(bool on)
+    {
+        if (on && !_normalizeMode)
+        {
+            // Capture baseline — snapshot current EGT values
+            for (int i = 0; i < _numCylinders; i++)
+                _nrmBaseline[i] = _egtPtrs[i] ? *_egtPtrs[i] : 0;
+        }
+        _normalizeMode = on;
+        _dirty = true;
+    }
+
+    bool isNormalized() const { return _normalizeMode; }
 
     // --- TIT configuration ---
     // Add a TIT column. Call once for TIT1, twice for TIT1+TIT2.

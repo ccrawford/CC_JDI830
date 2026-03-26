@@ -71,7 +71,13 @@ struct PlaneProfile {
     bool hasUsed;               // Fuel used
     bool hasHp;
     bool hasDif;                // EGT differential (hottest - coldest)
-    bool hasColdRate;                
+    bool hasColdRate;
+
+    // --- Fuel tank presets (Factory Limits) ---
+    // MAIN = usable fuel in main tanks.  AUX = usable fuel in aux tanks.
+    // Used by the fuel setup wizard at power-up (FILL 66 = MAIN, FILL 86 = MAIN+AUX).
+    float fuelMain;             // gallons, main tank preset
+    float fuelAux;              // gallons, aux tank preset (0 if no aux)
 
     // --- Gauge ranges ---
     // Each GaugeRangeDef holds the scale range, redline, and color bands

@@ -115,6 +115,7 @@ struct AlarmDef {
     AlarmCheck           check;        // how to evaluate
     int                  decimals;     // for formatting the displayed value
     bool                 timeFormat;   // true = display as H:MM instead of number
+    const int*           cylPtr;       // -> cylinder number (CHT only), nullptr for others
 
     // --- Mutable runtime state ---
     DismissState         dismiss      = DismissState::ACTIVE;
@@ -153,17 +154,21 @@ public:
 
         auto add = [&](const char* label, const float* val,
                        const GaugeRangeDef* range, const bool* avail,
-                       AlarmCheck check, int dec, bool timeFmt = false) {
+                       AlarmCheck check, int dec, bool timeFmt = false,
+                       const int* cyl = nullptr) {
             if (*avail && _numAlarms < MAX_ALARMS) {
                 _alarms[_numAlarms++] = {
-                    label, val, range, avail, check, dec, timeFmt,
+                    label, val, range, avail, check, dec, timeFmt, cyl,
                     DismissState::ACTIVE, 0
                 };
             }
         };
 
         // Priority order per JPI EDM830 manual (highest first):
-        add("CHT",    &state.chtPeak,  &prof.cht,       &prof.hasCht,      AlarmCheck::ABOVE_REDLINE, 0);
+        // CHT gets a cylinder pointer so the alarm display can show which cylinder
+        // is over-temp (e.g. "CHT 3").  chtPeakCyl is 0-based; the draw function
+        // adds 1 for the 1-based display number.
+        add("CHT",    &state.chtPeak,  &prof.cht,       &prof.hasCht,      AlarmCheck::ABOVE_REDLINE, 0, false, &state.chtPeakCyl);
         add("OIL",    &state.oilT,     &prof.oilT,      &prof.hasOilT,     AlarmCheck::IN_RED_HIGH,   0);
         add("TIT",    &state.tit1,     &prof.tit1,      &prof.hasTit1,     AlarmCheck::ABOVE_REDLINE, 0);
         add("OIL",    &state.oilT,     &prof.oilT,      &prof.hasOilT,     AlarmCheck::IN_RED_LOW,    0);
@@ -235,37 +240,16 @@ public:
     // --- Accessors for the currently active alarm ---
     // Only valid when scan() returned true (i.e. hasActiveAlarm() == true).
 
-    bool        hasActiveAlarm() const { return _activeAlarmIndex >= 0; }
-    const char* activeLabel()    const { return _alarms[_activeAlarmIndex].label; }
-    float       activeValue()    const { return *_alarms[_activeAlarmIndex].valuePtr; }
-    int         activeDecimals() const { return _alarms[_activeAlarmIndex].decimals; }
-    bool        isTimeFormat()   const { return _alarms[_activeAlarmIndex].timeFormat; }
+    bool        hasActiveAlarm()  const { return _activeAlarmIndex >= 0; }
+    const char* activeLabel()     const { return _alarms[_activeAlarmIndex].label; }
+    float       activeValue()     const { return *_alarms[_activeAlarmIndex].valuePtr; }
+    int         activeDecimals()  const { return _alarms[_activeAlarmIndex].decimals; }
+    bool        isTimeFormat()    const { return _alarms[_activeAlarmIndex].timeFormat; }
 
-    // -----------------------------------------------------------------
-    // formatAlarm — writes the alarm display string into the provided
-    // buffer.  Handles both numeric ("CHT 412") and time ("LO 0:18")
-    // formats.
-    //
-    // snprintf is the safe version of sprintf — it takes a buffer size
-    // and will never write past it, preventing buffer overflows.
-    // -----------------------------------------------------------------
-    void formatAlarm(char* buf, size_t bufSize) const {
-        if (_activeAlarmIndex < 0) { buf[0] = '\0'; return; }
-
-        const AlarmDef& a = _alarms[_activeAlarmIndex];
-        float val = *a.valuePtr;
-
-        if (a.timeFormat) {
-            // Display as H:MM (endurance is stored as minutes)
-            int totalMin = static_cast<int>(val);
-            int hours = totalMin / 60;
-            int mins  = totalMin % 60;
-            snprintf(buf, bufSize, "%s %d:%02d", a.label, hours, mins);
-        } else if (a.decimals > 0) {
-            snprintf(buf, bufSize, "%s %.1f", a.label, val);
-        } else {
-            snprintf(buf, bufSize, "%s %d", a.label, static_cast<int>(val));
-        }
+    // Full access to the active alarm definition — used by the alarm draw
+    // function to read label, value, cylinder number, time format, etc.
+    const AlarmDef* activeAlarmDef() const {
+        return (_activeAlarmIndex >= 0) ? &_alarms[_activeAlarmIndex] : nullptr;
     }
 
     // -----------------------------------------------------------------

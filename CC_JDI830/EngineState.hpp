@@ -50,6 +50,9 @@ struct EngineState {
     bool  peakReached = false;   // Used in leaning
     unsigned long lastCoolingUpdate = 0;  // Used to determine cooling rate
 
+    // Used for display
+    bool showNormalized = false;
+
     // Copies of the selected cylinder's values — updated each frame
     // so BottomBar page pointers stay valid regardless of which cylinder is selected
     float egtSelected = 0;

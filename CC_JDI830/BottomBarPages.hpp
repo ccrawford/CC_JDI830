@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BottomBar.hpp"
+#include "AlarmManager.hpp"
 #include "EngineState.hpp"
 #include "PlaneProfile.hpp"
 #include "DisplayParams.hpp"
@@ -107,7 +108,7 @@ inline void drawLabelValueUnits(LGFX_Sprite &spr, const BottomValueDef &def,
 
     char buf[10];
 
-    sprintf(buf, "%.f", def.decimals, curVal);
+    snprintf(buf, sizeof(buf), "%.*f", def.decimals, (double)curVal);
     spr.drawString(buf, valX, h / 2);
     textWidth = spr.textWidth(buf);
 
@@ -130,6 +131,85 @@ inline void drawLabelValueUnits(LGFX_Sprite &spr, const BottomValueDef &def,
         spr.setTextColor(TFT_WHITE);
         spr.setTextDatum(ML_DATUM);
         spr.drawString(def.units, valX + textWidth + 3, h / 2);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Alarm draw — renders the alarm layout in the bottom bar sprite.
+//
+// Layout:
+//   Left half:  current value in WHITE, large SevenSeg42 font
+//               (H:MM format for endurance alarms)
+//   Right half: alarm label in RED, large ArialNI36 font (flashes)
+//               + cylinder number in RED SevenSeg42 (CHT only)
+//
+// The flash state (on/off) is managed by BottomBar::update() and read
+// from _alarmFlashOn.  When the label is "off" during the flash cycle,
+// only the value is drawn — the right side stays black.
+// ---------------------------------------------------------------------------
+inline void drawAlarmPage(LGFX_Sprite& spr, const AlarmDef& alarm,
+                          bool flashOn, int16_t w, int16_t h)
+{
+    float val = alarm.valuePtr ? *alarm.valuePtr : 0;
+    int16_t midX = w / 2;
+    int16_t midY = h / 2;
+
+    // --- Left side: value in white ---
+    spr.loadFont(SevenSeg42);
+    spr.setTextColor(TFT_WHITE);
+    spr.setTextDatum(MC_DATUM);
+
+    if (alarm.timeFormat) {
+        // Endurance: show as H:MM
+        int totalMin = static_cast<int>(val);
+        int hours = totalMin / 60;
+        int mins  = totalMin % 60;
+        char buf[10];
+        snprintf(buf, sizeof(buf), "%d:%02d", hours, mins);
+        spr.drawString(buf, midX / 2, midY);
+    } else if (alarm.decimals > 0) {
+        spr.drawFloat(val, alarm.decimals, midX / 2, midY);
+    } else {
+        spr.drawNumber(static_cast<int>(val), midX / 2, midY);
+    }
+
+    // --- Right side: flashing label in red ---
+    if (flashOn) {
+        // Label (e.g. "CHT", "OIL", "BAT")
+        spr.loadFont(ArialNI36);
+        spr.setTextColor(TFT_RED);
+
+        if (alarm.cylPtr) {
+            // CHT alarm: label + cylinder number side by side
+            // Draw label slightly left of center-right, cylinder number after it
+            spr.setTextDatum(MR_DATUM);
+            spr.drawString(alarm.label, midX + (midX / 2) - 2, midY);
+
+            // Cylinder number (1-based) in SevenSeg42
+            spr.loadFont(SevenSeg42);
+            spr.setTextColor(TFT_RED);
+            spr.setTextDatum(ML_DATUM);
+            spr.drawNumber(*alarm.cylPtr + 1, midX + (midX / 2) + 2, midY);
+        } else {
+            // All other alarms: label centered in right half
+            spr.setTextDatum(MC_DATUM);
+            spr.drawString(alarm.label, midX + midX / 2, midY);
+        }
+    }
+
+}
+
+// ---------------------------------------------------------------------------
+// BottomBar::drawAlarm — delegates to the free function drawAlarmPage().
+//
+// This is defined here (not in BottomBar.hpp) because it needs the full
+// AlarmDef type and the font headers.  This is the same pattern used for
+// PlaneProfile::isAvailable() — declare in the header, define in a later
+// file that has the necessary includes.
+// ---------------------------------------------------------------------------
+inline void BottomBar::drawAlarm() {
+    if (_alarmDef) {
+        drawAlarmPage(_sprite, *_alarmDef, _alarmFlashOn, _w, _h);
     }
 }
 

@@ -149,6 +149,9 @@ void CC_JDI830::setupGauges() {
     _bottomBar.init(310, 45);
     if (_numBottomPages > 0)
         _bottomBar.setPage(_bottomPages[0]);
+
+    _statusBar.setPosition(0,430);
+    _statusBar.init(320, 16);    
 }
 
 
@@ -225,7 +228,11 @@ void CC_JDI830::begin()
     // Load default profile (later: read saved index from NVS here)
     setProfile(2);
 
-    drawStatic();
+    // Device starts in FUEL_SETUP mode — record start time for the
+    // 1-second "FUEL" splash, then the wizard takes over.
+    _fuelSetupStartTime = millis();
+
+//    drawStatic();
 }
 
 void CC_JDI830::attach()
@@ -251,6 +258,13 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
         Put in your code to enter this mode (e.g. clear a display)
 
     ********************************************************************************** */
+    // Track connection liveness — any set() call means MobiFlight is talking.
+    _lastSetTime = millis();
+    if (_connectionLost) {
+        _connectionLost = false;
+        // Connection restored — ButtonInput was force-released, state is clean.
+    }
+
     // do something according your messageID
     switch (messageID) {
     case -1:
@@ -378,6 +392,16 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
     case 18:
         setProfile(atoi(setPoint));
         break;
+    
+    // Message ID 19 removed — normalize toggle is now driven by LF hold (3s).
+
+    case 20:
+        stepButtonStateChange((bool)atoi(setPoint));
+        break;
+
+    case 21:
+        lfButtonStateChange((bool)atoi(setPoint));
+        break;
 
     default:
         break;
@@ -399,71 +423,594 @@ void CC_JDI830::updateCalculatedFields()
     curState.updateCalculated(nCyl);
 }
 
+void CC_JDI830::advanceBottomPage()
+{
+     _currentBottomPage = (_currentBottomPage + 1) % _numBottomPages;
+     _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+}
+
+void CC_JDI830::stepButtonStateChange(bool pressed) {
+    _buttonInput.stepChange(pressed, millis());
+}
+
+void CC_JDI830::lfButtonStateChange(bool pressed) {
+    _buttonInput.lfChange(pressed, millis());
+}
+
+// ---------------------------------------------------------------------------
+// updateFuelSetupDisplay — render the fuel setup wizard in the bottom bar.
+//
+// Uses BottomBar::showMessage() to display text for each phase.  Called
+// every frame during FUEL_SETUP so flashing text toggles and the adjust
+// value stays current.
+//
+// Real JPI 830 display behavior per phase:
+//   SHOW_FUEL:     "FUEL" (solid, 1 second)
+//   ASK_FILL:      "FILL? N" (flashing)
+//   FILL_MAIN:     "FILL 60" (main tank gallons)
+//   FILL_MAIN_AUX: "FILL 86" (main + aux gallons)
+//   FILL_ADJUST:   "FILL + 58.9" (adjustable, LF to change)
+// ---------------------------------------------------------------------------
+void CC_JDI830::updateFuelSetupDisplay(uint32_t now) {
+    // Note: showMessage() stores the pointer, not a copy.  For phases that
+    // build dynamic text we use _fuelSetupBuf (a class member) so the
+    // pointer remains valid when BottomBar::update() draws later.  For
+    // static strings (literals) we pass them directly — they live in flash.
+
+    switch (_fuelSetupPhase) {
+        case FuelSetupPhase::SHOW_FUEL:
+            _bottomBar.showMessage("FUEL", TFT_WHITE);
+            break;
+
+        case FuelSetupPhase::ASK_FILL: {
+            // Flash "FILL? N" — ~500ms on, ~500ms off.
+            bool visible = ((now / 500) % 2 == 0);
+            if (visible) {
+                _bottomBar.showMessage("FILL?  N", TFT_YELLOW);
+            } else {
+                _bottomBar.showMessage(" ", TFT_BLACK);
+            }
+            break;
+        }
+
+        case FuelSetupPhase::FILL_MAIN:
+            snprintf(_fuelSetupBuf, sizeof(_fuelSetupBuf),
+                     "FILL  %d", (int)activeProfile->fuelMain);
+            _bottomBar.showMessage(_fuelSetupBuf, TFT_WHITE);
+            break;
+
+        case FuelSetupPhase::FILL_MAIN_AUX:
+            snprintf(_fuelSetupBuf, sizeof(_fuelSetupBuf),
+                     "FILL  %d",
+                     (int)(activeProfile->fuelMain + activeProfile->fuelAux));
+            _bottomBar.showMessage(_fuelSetupBuf, TFT_WHITE);
+            break;
+
+        case FuelSetupPhase::FILL_ADJUST:
+            snprintf(_fuelSetupBuf, sizeof(_fuelSetupBuf),
+                     "FILL + %.1f", _fuelAdjustValue);
+            _bottomBar.showMessage(_fuelSetupBuf, TFT_WHITE);
+            break;
+
+        case FuelSetupPhase::FILL_ADJUST_FINE:
+            snprintf(_fuelSetupBuf, sizeof(_fuelSetupBuf),
+                     "FILL  %.1f", _fuelAdjustValue);
+            _bottomBar.showMessage(_fuelSetupBuf, TFT_WHITE);
+            break;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// handleGesture — the mode state machine.
+//
+// This is the core transition table: given the current DisplayMode and a
+// ButtonGesture, decide what to do.  It's a switch-within-switch — the
+// outer switch is the current mode, the inner switch is the gesture.
+//
+// The compiler turns nested switches into jump tables on ESP32/Xtensa,
+// so this is as efficient as a function-pointer table but much more readable.
+//
+// Alarms take priority: if an alarm is showing, STEP gestures are intercepted
+// for dismiss/snooze before normal mode handling.
+// ---------------------------------------------------------------------------
+void CC_JDI830::handleGesture(ButtonGesture gesture) {
+
+    // --- Alarm intercept (highest priority) ---
+    // When an alarm is active, STEP controls alarm dismissal regardless
+    // of the current display mode.
+    if (_bottomBarMode == BottomBarMode::ALARM) {
+        switch (gesture) {
+            case ButtonGesture::STEP_TAP:
+                onStepPress();       // dismiss for 10 minutes
+                return;
+            case ButtonGesture::STEP_HOLD:
+                onStepLongPress();   // dismiss permanently
+                return;
+            default:
+                break;  // other gestures fall through to normal mode handling
+        }
+    }
+
+    // --- Mode-specific handling ---
+    switch (_displayMode) {
+
+        case DisplayMode::FUEL_SETUP:
+            switch (_fuelSetupPhase) {
+                case FuelSetupPhase::SHOW_FUEL:
+                    // "FUEL" is showing for 1 second — no button input accepted.
+                    break;
+
+                case FuelSetupPhase::ASK_FILL:
+                    // "FILL? N" is flashing.  STEP = skip (no fuel added), LF = yes.
+                    if (gesture == ButtonGesture::STEP_TAP) {
+                        // No fuel added — exit to MANUAL mode.
+                        _displayMode = DisplayMode::MANUAL;
+                        _autoScan = false;
+                        _manualStartTime = millis();
+                        _bottomBar.clearMessage();
+                    } else if (gesture == ButtonGesture::LF_TAP) {
+                        // User wants to enter fuel — show first choice.
+                        _fuelSetupPhase = FuelSetupPhase::FILL_MAIN;
+                    }
+                    break;
+
+                case FuelSetupPhase::FILL_MAIN:
+                    // Showing "FILL xx" (main tank value).
+                    // STEP = accept this value, LF = next choice.
+                    if (gesture == ButtonGesture::STEP_TAP) {
+                        curState.fuelRem = activeProfile->fuelMain;
+                        curState.used = 0;
+                        _displayMode = DisplayMode::MANUAL;
+                        _autoScan = false;
+                        _manualStartTime = millis();
+                        _bottomBar.clearMessage();
+                    } else if (gesture == ButtonGesture::LF_TAP) {
+                        // Advance to next choice: MAIN+AUX (if aux exists) or ADJUST.
+                        if (activeProfile->fuelAux > 0) {
+                            _fuelSetupPhase = FuelSetupPhase::FILL_MAIN_AUX;
+                        } else {
+                            _fuelSetupPhase = FuelSetupPhase::FILL_ADJUST;
+                            _fuelAdjustValue = curState.fuelRem;  // start from current
+                        }
+                    }
+                    break;
+
+                case FuelSetupPhase::FILL_MAIN_AUX:
+                    // Showing "FILL xx" (main + aux total).
+                    // STEP = accept, LF = next choice (FILL +).
+                    if (gesture == ButtonGesture::STEP_TAP) {
+                        curState.fuelRem = activeProfile->fuelMain + activeProfile->fuelAux;
+                        curState.used = 0;
+                        _displayMode = DisplayMode::MANUAL;
+                        _autoScan = false;
+                        _manualStartTime = millis();
+                        _bottomBar.clearMessage();
+                    } else if (gesture == ButtonGesture::LF_TAP) {
+                        _fuelSetupPhase = FuelSetupPhase::FILL_ADJUST;
+                        _fuelAdjustValue = curState.fuelRem;
+                    }
+                    break;
+
+                case FuelSetupPhase::FILL_ADJUST:
+                    // Showing "FILL +" with adjustable value.
+                    // STEP = enter fine-adjust mode (0.1 gal increments).
+                    // LF = cycle through coarse options (same as other FILL phases).
+                    if (gesture == ButtonGesture::STEP_TAP) {
+                        _fuelSetupPhase = FuelSetupPhase::FILL_ADJUST_FINE;
+                        _fuelFineHoldStart = 0;
+                        _fuelFineRepeatTime = 0;
+                    } else if (gesture == ButtonGesture::LF_TAP) {
+                        _fuelAdjustValue += 1.0f;  // increment by 1 gallon
+                    }
+                    break;
+
+                case FuelSetupPhase::FILL_ADJUST_FINE:
+                    // Fine adjustment mode: 0.1 gal resolution.
+                    // STEP tap = accept and save the value, exit to MANUAL.
+                    // LF tap  = subtract 0.1 gal.
+                    // LF hold = auto-repeat add handled in update() (not gestures).
+                    if (gesture == ButtonGesture::STEP_TAP) {
+                        curState.fuelRem = _fuelAdjustValue;
+                        curState.used = 0;
+                        _displayMode = DisplayMode::MANUAL;
+                        _autoScan = false;
+                        _manualStartTime = millis();
+                        _bottomBar.clearMessage();
+                    } else if (gesture == ButtonGesture::LF_TAP) {
+                        _fuelAdjustValue -= FUEL_FINE_STEP_SMALL;
+                        if (_fuelAdjustValue < 0) _fuelAdjustValue = 0;
+                    }
+                    break;
+            }
+            break;
+
+        case DisplayMode::AUTO:
+            switch (gesture) {
+                case ButtonGesture::STEP_TAP:
+                    // Switch to manual mode — stop auto-rotation.
+                    _displayMode = DisplayMode::MANUAL;
+                    _autoScan = false;
+                    _manualStartTime = millis();  // start 2-min auto-switch timer
+                    break;
+
+                case ButtonGesture::LF_TAP:
+                    // Enter lean find mode.
+                    _displayMode = DisplayMode::LEAN_FIND;
+                    _leanPhase = LeanPhase::PRE_LEAN;
+                    _autoScan = false;
+                    _bottomBarMode = BottomBarMode::LEAN;
+                    // TODO: enterLeanFind() — set up lean find display
+                    break;
+
+                case ButtonGesture::LF_HOLD_SHORT:
+                    // Toggle normalize/percentage view (3-second hold).
+                    curState.showNormalized = !curState.showNormalized;
+                    break;
+
+                case ButtonGesture::BOTH_HOLD:
+                    // Enter pilot programming mode (future).
+                    _displayMode = DisplayMode::PILOT_PROGRAM;
+                    _autoScan = false;
+                    _bottomBarMode = BottomBarMode::SETUP;
+                    // TODO: enterPilotProgram()
+                    break;
+
+                default:
+                    break;
+            }
+            break;
+
+        case DisplayMode::MANUAL:
+            switch (gesture) {
+                case ButtonGesture::STEP_TAP:
+                    // Advance to next parameter in the sequence.
+                    advanceBottomPage();
+                    _manualStartTime = millis();  // reset 2-min auto-switch timer
+                    break;
+
+                case ButtonGesture::STEP_HOLD:
+                    // Rapidly display previous parameters (backward scroll).
+                    // For now, go back one page.  A "rapid repeat" could be
+                    // implemented later with a timer while the button is held.
+                    _manualStartTime = millis();  // reset 2-min auto-switch timer
+                    if (_numBottomPages > 0) {
+                        _currentBottomPage = (_currentBottomPage - 1 + _numBottomPages)
+                                             % _numBottomPages;
+                        _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+                        _lastPageChange = millis();
+                    }
+                    break;
+
+                case ButtonGesture::LF_TAP:
+                    // Enter lean find mode.
+                    _displayMode = DisplayMode::LEAN_FIND;
+                    _leanPhase = LeanPhase::PRE_LEAN;
+                    _bottomBarMode = BottomBarMode::LEAN;
+                    // TODO: enterLeanFind()
+                    break;
+
+                case ButtonGesture::LF_HOLD_SHORT:
+                    // Toggle normalize/percentage view (3-second hold).
+                    curState.showNormalized = !curState.showNormalized;
+                    break;
+
+                case ButtonGesture::BOTH_TAP:
+                    // Toggle include/exclude current parameter from AUTO rotation.
+                    // TODO: toggleParamExclude() — needs a per-param include/exclude array
+                    break;
+
+                case ButtonGesture::BOTH_HOLD:
+                    // Enter pilot programming mode (future).
+                    _displayMode = DisplayMode::PILOT_PROGRAM;
+                    _autoScan = false;
+                    _bottomBarMode = BottomBarMode::SETUP;
+                    // TODO: enterPilotProgram()
+                    break;
+
+                default:
+                    break;
+            }
+            break;
+
+        case DisplayMode::LEAN_FIND:
+            switch (gesture) {
+                case ButtonGesture::STEP_TAP:
+                    // Exit lean find, return to AUTO mode.
+                    _displayMode = DisplayMode::AUTO;
+                    _autoScan = true;
+                    _bottomBarMode = _prevDataMode;
+                    _lastPageChange = millis();
+                    _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+                    // TODO: exitLeanFind()
+                    break;
+
+                case ButtonGesture::LF_HOLD_LONG:
+                    // Show peak EGT while held (only after peak is found).
+                    if (_leanPhase == LeanPhase::PEAK_FOUND) {
+                        _displayMode = DisplayMode::LEAN_PEEK;
+                        // TODO: showPeakEGT()
+                    }
+                    break;
+
+                case ButtonGesture::BOTH_HOLD:
+                    // Toggle Rich Of Peak / Lean Of Peak (only before leaning).
+                    if (_leanPhase == LeanPhase::PRE_LEAN) {
+                        // TODO: toggleRichLeanOfPeak()
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+            break;
+
+        case DisplayMode::LEAN_PEEK:
+            switch (gesture) {
+                case ButtonGesture::LF_RELEASE:
+                    // LF released — return to lean find display.
+                    _displayMode = DisplayMode::LEAN_FIND;
+                    // TODO: hidePeakEGT()
+                    break;
+
+                default:
+                    break;
+            }
+            break;
+
+        case DisplayMode::PILOT_PROGRAM:
+            // Future: pilot programming mode button handling.
+            // STEP tap = advance to next item
+            // LF tap/hold = increment/decrement values, toggle Y/N
+            // BOTH hold at "END? Y" = next programming mode
+            // For now, STEP tap exits back to AUTO as an escape hatch.
+            switch (gesture) {
+                case ButtonGesture::STEP_TAP:
+                    _displayMode = DisplayMode::AUTO;
+                    _autoScan = true;
+                    _bottomBarMode = _prevDataMode;
+                    _lastPageChange = millis();
+                    _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+                    break;
+
+                default:
+                    break;
+            }
+            break;
+    }
+
+    // Labels are updated every frame by updateStatusLabels() in update(),
+    // so we don't need to set them here after every transition.
+}
+
+// ---------------------------------------------------------------------------
+// updateStatusLabels — set button labels and center indicator each frame.
+//
+// Called once per frame in update().  This single function replaces all the
+// scattered setLabels() calls so labels always reflect the actual combined
+// state of DisplayMode + FuelSetupPhase + BottomBarMode.
+//
+// Center indicator:
+//   "NRM" — when showNormalized is active (EGT/CHT bars in normalize mode)
+//   "ROP" — when in lean-find mode and Rich-of-Peak is selected
+//   ""    — otherwise (hidden)
+// ---------------------------------------------------------------------------
+void CC_JDI830::updateStatusLabels() {
+    const char* step = "STEP";
+    const char* lf   = "LF";
+    const char* center = "";
+
+    // Alarm overrides the STEP label regardless of display mode
+    if (_bottomBarMode == BottomBarMode::ALARM) {
+        step = "CLEAR";
+        lf   = "";
+    } else {
+        switch (_displayMode) {
+            case DisplayMode::FUEL_SETUP:
+                switch (_fuelSetupPhase) {
+                    case FuelSetupPhase::SHOW_FUEL:
+                        step = "";
+                        lf   = "";
+                        break;
+                    case FuelSetupPhase::ASK_FILL:
+                        step = "EXIT";
+                        lf   = "REFUEL";
+                        break;
+                    case FuelSetupPhase::FILL_MAIN:
+                    case FuelSetupPhase::FILL_MAIN_AUX:
+                        step = "SAVE";
+                        lf   = "CHANGE";
+                        break;
+                    case FuelSetupPhase::FILL_ADJUST:
+                        step = "ADJUST";
+                        lf   = "CHANGE";
+                        break;
+                    case FuelSetupPhase::FILL_ADJUST_FINE:
+                        step = "SAVE";
+                        lf   = "CHANGE";
+                        break;
+                }
+                break;
+
+            case DisplayMode::AUTO:
+                step = "STEP";
+                lf   = "LF";
+                break;
+
+            case DisplayMode::MANUAL:
+                step = "STEP";
+                lf   = "LF";
+                break;
+
+            case DisplayMode::LEAN_FIND:
+                step = "EXIT";
+                lf   = "PEAK";
+                break;
+
+            case DisplayMode::LEAN_PEEK:
+                step = "";
+                lf   = "(hold)";
+                break;
+
+            case DisplayMode::PILOT_PROGRAM:
+                step = "NEXT";
+                lf   = "ADJ";
+                break;
+        }
+    }
+
+    // Center indicator: NRM when normalize is active, ROP during lean-find
+    // (future: "LOP" for lean-of-peak — currently only ROP is implemented)
+    if (curState.showNormalized) {
+        center = "NRM";
+    } else if (_displayMode == DisplayMode::LEAN_FIND
+            || _displayMode == DisplayMode::LEAN_PEEK) {
+        // TODO: check a richOfPeak flag once lean-find is fully implemented.
+        // For now, always show "ROP" when in lean-find mode.
+        center = "ROP";
+    }
+
+    _statusBar.setLabels(step, lf);
+    _statusBar.setCenterIndicator(center);
+}
+
+// ---------------------------------------------------------------------------
+// drawDebugState — LCD debug overlay for development.
+//
+// Draws current mode, gesture, connection status, and raw button state
+// directly to the bottom ~15 rows of the LCD (y = 465–480).  This writes
+// directly to the LCD (not through a sprite) since the debug area isn't
+// owned by any gauge.
+//
+// Controlled by the DEBUG_OVERLAY constexpr bool — when false, the compiler
+// eliminates this code entirely (dead code elimination).
+// ---------------------------------------------------------------------------
+void CC_JDI830::drawDebugState(ButtonGesture gesture) {
+    if constexpr (!DEBUG_OVERLAY) return;
+
+    // Map enums to short display strings.  These are just for debug — no
+    // need for a fancy toString() method.
+    const char* modeStr = "???";
+    switch (_displayMode) {
+        case DisplayMode::FUEL_SETUP:     modeStr = "FUEL";    break;
+        case DisplayMode::AUTO:           modeStr = "AUTO";    break;
+        case DisplayMode::MANUAL:         modeStr = "MANUAL";  break;
+        case DisplayMode::LEAN_FIND:      modeStr = "LEAN";    break;
+        case DisplayMode::LEAN_PEEK:      modeStr = "PEEK";    break;
+        case DisplayMode::PILOT_PROGRAM:  modeStr = "PROG";    break;
+    }
+
+    const char* gestStr = "";
+    switch (gesture) {
+        case ButtonGesture::NONE:            gestStr = "";          break;
+        case ButtonGesture::STEP_TAP:        gestStr = "S_TAP";    break;
+        case ButtonGesture::STEP_HOLD:       gestStr = "S_HOLD";   break;
+        case ButtonGesture::LF_TAP:          gestStr = "LF_TAP";   break;
+        case ButtonGesture::LF_HOLD_SHORT:   gestStr = "LF_H3";    break;
+        case ButtonGesture::LF_HOLD_LONG:    gestStr = "LF_H5";    break;
+        case ButtonGesture::LF_RELEASE:      gestStr = "LF_REL";   break;
+        case ButtonGesture::BOTH_TAP:        gestStr = "B_TAP";    break;
+        case ButtonGesture::BOTH_HOLD:       gestStr = "B_HOLD";   break;
+        case ButtonGesture::BOTH_RELEASE:    gestStr = "B_REL";    break;
+    }
+
+    // Build the debug line:  "AUTO  S_TAP  S:0 L:1  CONN"
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%-6s %-6s S:%d L:%d %s",
+             modeStr, gestStr,
+             _buttonInput.isStepDown() ? 1 : 0,
+             _buttonInput.isLfDown() ? 1 : 0,
+             _connectionLost ? "LOST" : "CONN");
+
+    // Draw directly to LCD (not a sprite) in the bottom 15 rows.
+    // Black fill first to clear previous text, then white text on black.
+    _lcd.fillRect(0, 465, 320, 15, TFT_BLACK);
+    _lcd.setTextColor(TFT_GREEN, TFT_BLACK);
+    _lcd.setTextDatum(ML_DATUM);  // middle-left
+    _lcd.setTextSize(1);          // built-in font, small
+    _lcd.drawString(buf, 4, 472);
+}
+
+
 void CC_JDI830::update()
 {
     uint32_t now = millis();
 
+    // --- Connection-loss detection ---
+    // If MobiFlight stops sending data, release any "stuck" buttons.
+    if (!_connectionLost && _lastSetTime > 0
+        && (now - _lastSetTime >= CONNECTION_TIMEOUT_MS)) {
+        _connectionLost = true;
+        _buttonInput.forceRelease();
+    }
+
+    // --- Fuel setup timed transitions ---
+    // The "FUEL" splash shows for 1 second, then auto-advances to "FILL? N".
+    if (_displayMode == DisplayMode::FUEL_SETUP
+        && _fuelSetupPhase == FuelSetupPhase::SHOW_FUEL
+        && (now - _fuelSetupStartTime >= 1000)) {
+        _fuelSetupPhase = FuelSetupPhase::ASK_FILL;
+    }
+
+    // --- Fuel setup bottom bar rendering ---
+    // Uses showMessage() to display the current phase text.  Called every
+    // frame so the flashing "FILL? N" text toggles and the adjust value
+    // stays up to date.
+    if (_displayMode == DisplayMode::FUEL_SETUP) {
+        updateFuelSetupDisplay(now);
+
+        // --- Fine-adjust hold-repeat ---
+        // In FILL_ADJUST_FINE, holding LF auto-increments fuel at 300ms
+        // intervals.  After 3 seconds the step jumps from 0.1 to 1.0 gal.
+        // Releasing LF resets the acceleration so next hold starts at 0.1.
+        if (_fuelSetupPhase == FuelSetupPhase::FILL_ADJUST_FINE) {
+            if (_buttonInput.isLfDown()) {
+                // Start tracking on first frame where LF is down
+                if (_fuelFineHoldStart == 0) {
+                    _fuelFineHoldStart  = now;
+                    _fuelFineRepeatTime = now;  // first tick fires immediately
+                }
+                // Auto-repeat at FUEL_FINE_REPEAT_MS intervals
+                if (now - _fuelFineRepeatTime >= FUEL_FINE_REPEAT_MS) {
+                    _fuelFineRepeatTime = now;
+                    float step = ((now - _fuelFineHoldStart) >= FUEL_FINE_ACCEL_MS)
+                                 ? FUEL_FINE_STEP_LARGE
+                                 : FUEL_FINE_STEP_SMALL;
+                    _fuelAdjustValue += step;
+                }
+            } else {
+                // LF released — reset acceleration so next hold starts small
+                _fuelFineHoldStart  = 0;
+                _fuelFineRepeatTime = 0;
+            }
+        }
+    }
+
+    // --- Button gesture polling ---
+    // poll() checks timing thresholds and returns the next completed gesture.
+    ButtonGesture gesture = _buttonInput.poll(now);
+    if (gesture != ButtonGesture::NONE) {
+        handleGesture(gesture);
+    }
+
+    // --- Auto-switch: MANUAL → AUTO after 2 minutes of inactivity ---
+    // The device starts in MANUAL mode.  If the user doesn't interact for
+    // AUTO_SWITCH_MS, it automatically enters AUTO mode with page rotation.
+    if (_displayMode == DisplayMode::MANUAL
+        && _manualStartTime > 0
+        && (now - _manualStartTime >= AUTO_SWITCH_MS)) {
+        _displayMode = DisplayMode::AUTO;
+        _autoScan = true;
+        _lastPageChange = now;
+    }
+
     // Recompute all derived fields (peaks, diffs, fuel calcs, fake cylinders)
     updateCalculatedFields();
-
-    // Update simulated values every 100ms for demo purposes
-    /* if (now - _lastUpdate > 200) {
-        _lastUpdate = now;
-
-        // Bounce RPM between 2000 and 2700
-        // curState.rpm += _rpmDelta;
-        // if (curState.rpm > 2800) { curState.rpm = 2700; _rpmDelta = -10.0f; }
-        // if (curState.rpm < 2000) { curState.rpm = 2000; _rpmDelta = 10.0f; }
-
-        curState.map += 0.1f;
-        if (curState.map > 33) curState.map =14.0f;
-
-        curState.egt[4] += 10;
-        if (curState.egt[4] > 1800) curState.egt[4] = 850;
-
-        curState.cht[1] += 10;
-        if (curState.cht[1] > 500) curState.cht[1] = 250;
-
-        curState.hp += 1;
-        if (curState.hp > 100) curState.hp = 0;
-
-        // Slowly vary EGT on cylinder 3
-        curState.egt[2] = 1500 + sin(now / 2000.0f) * 100;
-
-        curState.fuelRem -= 0.1;
-        if (curState.fuelRem < 0) curState.fuelRem = 60;
-
-        // Recompute peaks
-        int nCyl = activeProfile->numCylinders;
-        auto egtIt = std::max_element(curState.egt, curState.egt + nCyl);
-        curState.egtPeak    = *egtIt;
-        curState.egtPeakCyl = egtIt - curState.egt;
-
-        auto chtIt = std::max_element(curState.cht, curState.cht + nCyl);
-        curState.chtPeak    = *chtIt;
-        curState.chtPeakCyl = chtIt - curState.cht;
-
-        curState.selectedCylinder = 3;
-        _egtChtBars.setSelectedCylinder(curState.selectedCylinder);
-
-        // Keep selected-cylinder copies up to date
-        curState.egtSelected = curState.egt[curState.selectedCylinder];
-        curState.chtSelected = curState.cht[curState.selectedCylinder];
-
-//        _egtChtBars.setSelectedCylinder(curState.chtPeakCyl);
-    }
-*/
 
     // --- Bottom bar mode dispatch ---
     // In data modes, scan for alarms each frame.  If one fires, save the
     // current mode and switch to ALARM.  In ALARM mode, keep scanning —
     // if the condition clears (and isn't dismissed), restore the previous
     // data mode so page rotation resumes.
-    //
-    // The `switch` here is the idiomatic C++ way to dispatch on an enum
-    // class.  Each case handles one mode's behavior.  LEAN/SETUP are
-    // stubs — they just break (do nothing) so alarms don't interrupt
-    // those future features.
     switch (_bottomBarMode) {
         case BottomBarMode::ALL_DATA:
         case BottomBarMode::FUEL_DATA:
@@ -472,14 +1019,14 @@ void CC_JDI830::update()
             if (_alarmMgr.scan(now)) {
                 _prevDataMode = _bottomBarMode;
                 _bottomBarMode = BottomBarMode::ALARM;
-                _alarmMgr.formatAlarm(_alarmBuf, sizeof(_alarmBuf));
-                _bottomBar.showMessage(_alarmBuf, TFT_RED);
+                _bottomBar.showAlarm(_alarmMgr.activeAlarmDef(), _alarmMgr.activeAlarmDef()->valuePtr);
             } else {
-                // No alarm — auto-rotate pages as before
-                if (now - _lastPageChange > PAGE_ROTATE_MS) {
-                    _lastPageChange = now;
-                    _currentBottomPage = (_currentBottomPage + 1) % _numBottomPages;
-                    _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+                // No alarm — display data pages
+                if (_autoScan) {
+                    if (now - _lastPageChange > PAGE_ROTATE_MS) {
+                        _lastPageChange = now;
+                        advanceBottomPage();
+                    }
                 }
             }
             break;
@@ -487,13 +1034,18 @@ void CC_JDI830::update()
         case BottomBarMode::ALARM:
             // Re-scan each frame: alarm may clear if value returns to normal
             if (_alarmMgr.scan(now)) {
-                // Still alarming — update the message (value may have changed)
-                _alarmMgr.formatAlarm(_alarmBuf, sizeof(_alarmBuf));
-                _bottomBar.showMessage(_alarmBuf, TFT_RED);
+                // Only call showAlarm() if the active alarm changed (e.g. a
+                // higher-priority alarm appeared).  If it's the same alarm,
+                // leave BottomBar alone so the flash timer keeps running.
+                const AlarmDef* newDef = _alarmMgr.activeAlarmDef();
+                if (newDef != _bottomBar.alarmDef()) {
+                    _bottomBar.showAlarm(newDef, newDef->valuePtr);
+                }
             } else {
                 // Alarm cleared — restore previous data mode
                 _bottomBarMode = _prevDataMode;
-                _bottomBar.clearMessage();
+                _bottomBar.clearAlarm();
+                _bottomBar.setPage(_bottomPages[_currentBottomPage]);
                 _lastPageChange = now;  // reset rotation timer
             }
             break;
@@ -504,15 +1056,25 @@ void CC_JDI830::update()
             break;
     }
 
+    // --- Status bar labels + center indicator ---
+    // Called every frame so labels always match the current state, even
+    // after timed transitions (auto-switch, alarm clear) that don't go
+    // through handleGesture().
+    updateStatusLabels();
+
     // Update all gauges — each one only redraws if its value changed
     _rpmGauge.update();
+    _egtChtBars.setNormalize(curState.showNormalized);
     if (activeProfile->hasMap) _mapGauge.update();
     for (int i = 0; i < _displayCfg.numRightBarSlots; i++) _rightBars[i].update();
     _egtChtBars.update();
 
     _bottomBar.update();
+    _statusBar.update();
     _hpPct.update();
 
+    // Debug overlay — shows mode, gesture, button state, connection status.
+    drawDebugState(gesture);
 }
 
 // ---------------------------------------------------------------------------
@@ -532,11 +1094,11 @@ void CC_JDI830::onStepPress() {
         // Immediately re-scan: if another alarm is pending it takes over,
         // otherwise we drop back to the data mode.
         if (_alarmMgr.scan(millis())) {
-            _alarmMgr.formatAlarm(_alarmBuf, sizeof(_alarmBuf));
-            _bottomBar.showMessage(_alarmBuf, TFT_RED);
+            _bottomBar.showAlarm(_alarmMgr.activeAlarmDef(), _alarmMgr.activeAlarmDef()->valuePtr);
         } else {
             _bottomBarMode = _prevDataMode;
-            _bottomBar.clearMessage();
+            _bottomBar.clearAlarm();
+            _bottomBar.setPage(_bottomPages[_currentBottomPage]);
             _lastPageChange = millis();
         }
     } else if (_bottomBarMode != BottomBarMode::ALARM) {
@@ -560,11 +1122,11 @@ void CC_JDI830::onStepLongPress() {
         _alarmMgr.dismissPermanent();
 
         if (_alarmMgr.scan(millis())) {
-            _alarmMgr.formatAlarm(_alarmBuf, sizeof(_alarmBuf));
-            _bottomBar.showMessage(_alarmBuf, TFT_RED);
+            _bottomBar.showAlarm(_alarmMgr.activeAlarmDef(), _alarmMgr.activeAlarmDef()->valuePtr);
         } else {
             _bottomBarMode = _prevDataMode;
-            _bottomBar.clearMessage();
+            _bottomBar.clearAlarm();
+            _bottomBar.setPage(_bottomPages[_currentBottomPage]);
             _lastPageChange = millis();
         }
     }

@@ -55,6 +55,10 @@ static const PlaneProfile PROFILE_A2A_COMANCHE = {
     .hasDif       = true,
     .hasColdRate  = true,
 
+    // --- Fuel tank presets ---
+    .fuelMain = 60.0f,       // Comanche 250 main tanks (2 × 30 gal)
+    .fuelAux  = 0.0f,        // no aux tanks
+
     // --- Gauge ranges ---
     .rpm     = { 0, 2900, 2580,    { {0, 2580, TFT_GREEN}, {2580, 2900, TFT_RED} }, 2 },
     .map     = { 15, 33, 31,       { {15, 31, TFT_GREEN}, {31, 33, TFT_RED} }, 2 },
@@ -63,7 +67,7 @@ static const PlaneProfile PROFILE_A2A_COMANCHE = {
     .bat     = { 12, 16, 0,        { {11, 12, TFT_RED}, {12, 14, TFT_GREEN}, {14, 16, TFT_RED} }, 3 },
     .oat     = { -20, 50, 0,       { {-20, 50, TFT_GREEN} }, 1 },
     .egt     = { 850, 1700, 1650,  { {0, 1650, TFT_WHITE}, {1650, 2600, TFT_RED} }, 2 },
-    .cht     = { 200, 600, 400,    { {0, 400, TFT_WHITE}, {400, 1000, TFT_RED} }, 2 },
+    .cht     = { 200, 600, 380,    { {0, 380, TFT_WHITE}, {380, 1000, TFT_RED} }, 2 },
     .tit1    = {},                  // no TIT
     .tit2    = {},
     .ff      = { 0, 30, 0,         { {0, 2.5, TFT_RED}, {2.5, 30, TFT_GREEN} }, 2 },
@@ -115,6 +119,10 @@ static const PlaneProfile PROFILE_CESSNA_T206H = {
     .hasDif       = true,
     .hasColdRate  = true,
 
+    // --- Fuel tank presets ---
+    .fuelMain = 61.0f,       // T206H main tanks (2 × 30.5 gal usable)
+    .fuelAux  = 25.0f,       // T206H aux tanks (2 × 12.5 gal usable)
+
     // --- Gauge ranges ---
     .rpm     = { 0, 2900, 2700,    { {0, 2700, TFT_GREEN}, {2700, 2900, TFT_RED} }, 2 },
     .map     = { 15, 38, 36,       { {15, 36, TFT_GREEN}, {36, 40, TFT_RED} }, 2 },
@@ -123,7 +131,7 @@ static const PlaneProfile PROFILE_CESSNA_T206H = {
     .bat     = { 20, 32, 0,        { {20, 22, TFT_RED}, {22, 30, TFT_GREEN}, {30, 32, TFT_RED} }, 3 },
     .oat     = { -20, 50, 0,       { {-20, 50, TFT_GREEN} }, 1 },
     .egt     = { 850, 1700, 1650,  { {0, 1650, TFT_WHITE}, {1650, 2600, TFT_RED} }, 2 },
-    .cht     = { 200, 600, 450,    { {0, 450, TFT_WHITE}, {450, 1000, TFT_RED} }, 2 },
+    .cht     = { 200, 600, 380,    { {0, 380, TFT_WHITE}, {380, 1000, TFT_RED} }, 2 },
     .tit1    = { 850, 1700, 1650,  { {0, 1650, TFT_CYAN}, {1650, 2000, TFT_RED} }, 2 },
     .tit2    = { 850, 1700, 1650,  { {0, 1650, TFT_CYAN}, {1650, 2000, TFT_RED} }, 2 },
     .ff      = { 0, 30, 0,         { {0, 5, TFT_RED}, {5, 30, TFT_GREEN} }, 2 },
@@ -174,6 +182,10 @@ static const PlaneProfile PROFILE_CESSNA_172S = {
     .hasHp        = false,
     .hasDif       = true,
     .hasColdRate  = true,
+
+    // --- Fuel tank presets ---
+    .fuelMain = 53.0f,       // 172S main tanks (2 × 26.5 gal usable)
+    .fuelAux  = 0.0f,        // no aux tanks
 
     // --- Gauge ranges ---
     .rpm     = { 0, 2800, 2700,    { {0, 2700, TFT_GREEN}, {2700, 2800, TFT_RED} }, 2 },

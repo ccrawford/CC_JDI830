@@ -1,11 +1,19 @@
 #pragma once
 #include "JPIGauges.hpp"
 
+// Forward declaration — full definition is in AlarmManager.hpp.
+// BottomBar only stores a pointer to AlarmDef, so it doesn't need
+// the complete type here.  This avoids a circular include since
+// AlarmManager.hpp includes PlaneProfile.hpp which we don't want
+// pulled into the gauge header chain.
+struct AlarmDef;
+
 enum class BottomMode : uint8_t
 {
-    DUAL,   // Two numeric values
-    SINGLE, // one value, centered
-    MESSAGE // text alert/notification/instruction
+    DUAL,    // Two numeric values
+    SINGLE,  // one value, centered
+    MESSAGE, // text alert/notification/instruction
+    ALARM    // engine alarm: white value left, flashing red label right
 };
 
 struct BottomValueDef
@@ -49,6 +57,7 @@ struct BottomPage {
 };
 
 class BottomBar : public Gauge {
+
     //  Current page data
     BottomPage _page;
 
@@ -65,8 +74,29 @@ class BottomBar : public Gauge {
     // Second value change tracker (base class only has one _prevValue)
     float _prevRight = -99999.0f;
 
+    // Alarm rendering state
+    const AlarmDef* _alarmDef       = nullptr;   // active alarm (set by showAlarm)
+    const float*    _alarmValuePtr  = nullptr;   // cached from AlarmDef so update() doesn't
+                                                 // need the full AlarmDef type (only forward-declared)
+    bool            _alarmFlashOn   = true;      // flash toggle for label
+    uint32_t        _alarmFlashTime = 0;         // millis() when current flash phase started
+
+    // Flash timing: label is visible for 700ms, hidden for 300ms
+    static constexpr uint32_t FLASH_ON_MS  = 700;
+    static constexpr uint32_t FLASH_OFF_MS = 300;
+
 protected:
+    // drawAlarm is implemented in BottomBarPages.hpp (after AlarmDef is
+    // fully defined) via the free function drawAlarmPage().
+    void drawAlarm();
+
     void drawGauge() override {
+
+        if (_page.mode == BottomMode::ALARM && _alarmDef)
+        {
+            drawAlarm();
+            return;
+        }
 
         if (_page.mode == BottomMode::MESSAGE || isMessageActive())
         {
@@ -136,16 +166,68 @@ public:
 
     bool isMessageActive() const { return _messageActive; }
 
-    // --- Override update to handle message expiry + dual value tracking ---
+    // --- Alarm display ---
+    // Sets the bottom bar into ALARM mode, rendering the active alarm
+    // with a white value on the left and a flashing red label on the right.
+    // The AlarmDef pointer must remain valid for the duration of the alarm.
+    // valuePtr is passed separately so update() can track value changes
+    // without dereferencing the AlarmDef (which is only forward-declared
+    // in this header).
+    void showAlarm(const AlarmDef* def, const float* valuePtr) {
+        _alarmDef = def;
+        _alarmValuePtr = valuePtr;
+        _page.mode = BottomMode::ALARM;
+        _alarmFlashOn = true;
+        _alarmFlashTime = millis();
+        _messageActive = false;    // alarm takes priority over messages
+        _dirty = true;
+    }
+
+    void clearAlarm() {
+        _alarmDef = nullptr;
+        _alarmValuePtr = nullptr;
+        _dirty = true;
+    }
+
+    bool isAlarmActive() const { return _alarmDef != nullptr; }
+    const AlarmDef* alarmDef() const { return _alarmDef; }
+
+    // --- Override update to handle message expiry, alarm flash, + value tracking ---
     void update() override {
+        uint32_t now = millis();
+
+        // --- Alarm flash toggle ---
+        // When in alarm mode, the label flashes: visible for FLASH_ON_MS,
+        // hidden for FLASH_OFF_MS.  Each toggle forces a redraw.
+        if (_page.mode == BottomMode::ALARM && _alarmDef) {
+            uint32_t elapsed = now - _alarmFlashTime;
+            if (_alarmFlashOn && elapsed >= FLASH_ON_MS) {
+                _alarmFlashOn = false;
+                _alarmFlashTime = now;
+                _dirty = true;
+            } else if (!_alarmFlashOn && elapsed >= FLASH_OFF_MS) {
+                _alarmFlashOn = true;
+                _alarmFlashTime = now;
+                _dirty = true;
+            }
+            // Also redraw if the alarm value changed
+            if (_alarmValuePtr) {
+                float cur = *_alarmValuePtr;
+                if (cur != _prevValue) {
+                    _prevValue = cur;
+                    _dirty = true;
+                }
+            }
+        }
+
         // Check if timed message has expired
-        if (_messageActive && _messageExpiry && millis() > _messageExpiry) {
+        if (_messageActive && _messageExpiry && now > _messageExpiry) {
             _messageActive = false;
             _dirty = true;
         }
 
-        // Track value changes (skip if message is covering everything)
-        if (!_messageActive) {
+        // Track value changes (skip if message or alarm is covering everything)
+        if (!_messageActive && _page.mode != BottomMode::ALARM) {
             if (_page.left.ptr) {
                 float cur = *_page.left.ptr;
                 if (cur != _prevValue) {
