@@ -38,8 +38,8 @@ class StatusBar : public Gauge{
                 int rx = cx - rw / 2;
                 int ry = cy - rh / 2;
 
-                _sprite.fillRoundRect(rx, ry, rw, rh, 3, BAR_COLOR);
-                _sprite.setTextColor(TFT_WHITE, BAR_COLOR);
+                _sprite.fillRoundRect(rx, ry, rw, rh, 3, TFT_WHITE);
+                _sprite.setTextColor(BAR_COLOR, TFT_WHITE);
                 _sprite.drawString(_centerIndicator, cx, cy);
             }
         }

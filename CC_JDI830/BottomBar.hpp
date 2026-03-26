@@ -24,6 +24,7 @@ struct BottomValueDef
     const char  *units;      // optional units string drawn after value (e.g. "GAL", "°F")
     ColorRange  colors[3];
     uint8_t     colorCount;
+    bool        excluded;    // true = page excluded from AUTO rotation (draw dot before label)
 };
 
 // Look up the display color for a value based on its color ranges.
@@ -54,6 +55,7 @@ struct BottomPage {
     BottomValueDef left;
     BottomDrawFn   rightDraw;    // draw function for right slot (DUAL only)
     BottomValueDef right;
+    bool           nonExcludable; // true = cannot be excluded (EGT, CHT, TIT, OIL_TEMP)
 };
 
 class BottomBar : public Gauge {
@@ -141,8 +143,12 @@ public:
     void setMessageFont(const uint8_t* font) { _messageFont = font; }
 
     // --- Page control ---
-    void setPage(const BottomPage& page) {
+    // excluded: when true, draw functions will render a dot before the label
+    // to indicate the page is excluded from AUTO rotation.
+    void setPage(const BottomPage& page, bool excluded = false) {
         _page = page;
+        _page.left.excluded  = excluded;
+        _page.right.excluded = excluded;
         _prevValue = -99999.0f;
         _prevRight = -99999.0f;
         _dirty = true;

@@ -22,6 +22,7 @@ enum class ButtonGesture : uint8_t {
 
     BOTH_TAP,           // both pressed within SIMUL_WINDOW_MS, then released
     BOTH_HOLD,          // both held for HOLD_THRESHOLD_MS (fires once)
+    BOTH_HOLD_LONG,     // both held for LONG_HOLD_THREASHOLD_MS
     BOTH_RELEASE,       // both released after a hold
 };
 
@@ -58,6 +59,7 @@ public:
     static constexpr uint32_t TAP_THRESHOLD_MS  = 400;   // release within this = tap
     static constexpr uint32_t LF_SHORT_HOLD_MS  = 3000;  // LF normalize toggle (3s)
     static constexpr uint32_t HOLD_THRESHOLD_MS = 5000;   // all other holds (5s per manual)
+    static constexpr uint32_t LONG_HOLD_THRESHOLD_MS = 7000;   // all other holds (5s per manual)
     static constexpr uint32_t SIMUL_WINDOW_MS   = 150;    // window for simultaneous detection
 
     // --- Event inputs -------------------------------------------------------
@@ -129,14 +131,24 @@ public:
             }
         }
 
-        // If BOTH is active and both still held, check for hold threshold.
-        if (_bothActive && _stepDown && _lfDown) {
+        // If BOTH is active and both still held, check for hold threshold. (This is the 5 second hold)
+        if (_bothActive && (!_stepDown || !_lfDown)) {
             if (!_bothHoldFired && (now - _bothDownAt >= HOLD_THRESHOLD_MS)) {
                 _bothHoldFired = true;
                 return ButtonGesture::BOTH_HOLD;
             }
             return ButtonGesture::NONE;  // still waiting
         }
+
+        // If BOTH is active and both still held, check for hold threshold. (This is the 7 second hold)
+        if (_bothActive && _stepDown && _lfDown) {
+            if (!_bothHoldFired && (now - _bothDownAt >= LONG_HOLD_THRESHOLD_MS)) {
+                _bothLongHoldFired = true;
+                return ButtonGesture::BOTH_HOLD_LONG;
+            }
+            return ButtonGesture::NONE;  // still waiting
+        }
+
 
         // If BOTH was active but one or both released, check for tap vs hold.
         if (_bothActive && (!_stepDown || !_lfDown)) {
@@ -267,6 +279,7 @@ private:
     bool _lfShortHoldFired = false;  // 3s threshold
     bool _lfLongHoldFired  = false;  // 5s threshold
     bool _bothHoldFired    = false;
+    bool _bothLongHoldFired    = false;
 
     // --- Both-button tracking ---
     bool     _bothActive = false;    // true when both buttons are classified as BOTH

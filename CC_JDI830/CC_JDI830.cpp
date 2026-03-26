@@ -144,6 +144,7 @@ void CC_JDI830::setupGauges() {
 
     // --- Bottom bar ---
     _numBottomPages = buildBottomPages(_bottomPages, p, curState);
+    memset(_excluded, 0, sizeof(_excluded));  // reset all exclusions on profile change / power-up
     _bottomBar.setPosition(5, 380);
     _bottomBar.setMessageFont(ArialNI36);
     _bottomBar.init(310, 45);
@@ -231,6 +232,10 @@ void CC_JDI830::begin()
     // Device starts in FUEL_SETUP mode — record start time for the
     // 1-second "FUEL" splash, then the wizard takes over.
     _fuelSetupStartTime = millis();
+
+    pinMode(0, INPUT_PULLUP);
+    pinMode(14, INPUT_PULLUP);
+
 
 //    drawStatic();
 }
@@ -395,13 +400,13 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
     
     // Message ID 19 removed — normalize toggle is now driven by LF hold (3s).
 
-    case 20:
-        stepButtonStateChange((bool)atoi(setPoint));
-        break;
+    // case 20:
+    //     stepButtonStateChange((bool)atoi(setPoint));
+    //     break;
 
-    case 21:
-        lfButtonStateChange((bool)atoi(setPoint));
-        break;
+    // case 21:
+    //     lfButtonStateChange((bool)atoi(setPoint));
+    //     break;
 
     default:
         break;
@@ -426,7 +431,50 @@ void CC_JDI830::updateCalculatedFields()
 void CC_JDI830::advanceBottomPage()
 {
      _currentBottomPage = (_currentBottomPage + 1) % _numBottomPages;
-     _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+     showCurrentPage();
+}
+
+// ---------------------------------------------------------------------------
+// advanceBottomPageAuto — advance to the next non-excluded page.
+//
+// Used by the AUTO mode timer.  Skips pages that the user has excluded.
+// The loop is bounded by _numBottomPages to prevent infinite looping if
+// every excludable page is excluded (non-excludable pages always remain).
+// ---------------------------------------------------------------------------
+void CC_JDI830::advanceBottomPageAuto()
+{
+    if (_numBottomPages <= 0) return;
+    for (int i = 0; i < _numBottomPages; i++) {
+        _currentBottomPage = (_currentBottomPage + 1) % _numBottomPages;
+        if (!_excluded[_currentBottomPage]) break;
+    }
+    showCurrentPage();
+}
+
+// ---------------------------------------------------------------------------
+// showCurrentPage — push the current bottom page to the BottomBar widget,
+// including the excluded flag so the draw functions can render the dot prefix.
+// ---------------------------------------------------------------------------
+void CC_JDI830::showCurrentPage()
+{
+    _bottomBar.setPage(_bottomPages[_currentBottomPage],
+                       _excluded[_currentBottomPage]);
+}
+
+// ---------------------------------------------------------------------------
+// toggleParamExclude — toggle the current page's excluded-from-AUTO status.
+//
+// Called on BOTH_TAP in MANUAL mode.  Non-excludable pages (EGT, CHT, TIT,
+// OIL_TEMP) silently ignore the toggle.  The display updates immediately so
+// the dot-before-label indicator appears or disappears.
+// ---------------------------------------------------------------------------
+void CC_JDI830::toggleParamExclude()
+{
+    if (_numBottomPages <= 0) return;
+    if (_bottomPages[_currentBottomPage].nonExcludable) return;
+
+    _excluded[_currentBottomPage] = !_excluded[_currentBottomPage];
+    showCurrentPage();
 }
 
 void CC_JDI830::stepButtonStateChange(bool pressed) {
@@ -648,6 +696,11 @@ void CC_JDI830::handleGesture(ButtonGesture gesture) {
                     break;
 
                 case ButtonGesture::BOTH_HOLD:
+                    _displayMode = DisplayMode::FUEL_SETUP;
+                    _autoScan = false;
+                    break;
+
+                case ButtonGesture::BOTH_HOLD_LONG:
                     // Enter pilot programming mode (future).
                     _displayMode = DisplayMode::PILOT_PROGRAM;
                     _autoScan = false;
@@ -676,7 +729,7 @@ void CC_JDI830::handleGesture(ButtonGesture gesture) {
                     if (_numBottomPages > 0) {
                         _currentBottomPage = (_currentBottomPage - 1 + _numBottomPages)
                                              % _numBottomPages;
-                        _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+                        showCurrentPage();
                         _lastPageChange = millis();
                     }
                     break;
@@ -696,10 +749,15 @@ void CC_JDI830::handleGesture(ButtonGesture gesture) {
 
                 case ButtonGesture::BOTH_TAP:
                     // Toggle include/exclude current parameter from AUTO rotation.
-                    // TODO: toggleParamExclude() — needs a per-param include/exclude array
+                    toggleParamExclude();
                     break;
 
                 case ButtonGesture::BOTH_HOLD:
+                    _displayMode = DisplayMode::FUEL_SETUP;
+                    _autoScan = false;
+                    break;
+
+                case ButtonGesture::BOTH_HOLD_LONG:
                     // Enter pilot programming mode (future).
                     _displayMode = DisplayMode::PILOT_PROGRAM;
                     _autoScan = false;
@@ -720,7 +778,7 @@ void CC_JDI830::handleGesture(ButtonGesture gesture) {
                     _autoScan = true;
                     _bottomBarMode = _prevDataMode;
                     _lastPageChange = millis();
-                    _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+                    showCurrentPage();
                     // TODO: exitLeanFind()
                     break;
 
@@ -769,7 +827,7 @@ void CC_JDI830::handleGesture(ButtonGesture gesture) {
                     _autoScan = true;
                     _bottomBarMode = _prevDataMode;
                     _lastPageChange = millis();
-                    _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+                    showCurrentPage();
                     break;
 
                 default:
@@ -910,6 +968,7 @@ void CC_JDI830::drawDebugState(ButtonGesture gesture) {
         case ButtonGesture::LF_RELEASE:      gestStr = "LF_REL";   break;
         case ButtonGesture::BOTH_TAP:        gestStr = "B_TAP";    break;
         case ButtonGesture::BOTH_HOLD:       gestStr = "B_HOLD";   break;
+        case ButtonGesture::BOTH_HOLD_LONG:  gestStr = "B_HOLD_LONG";   break;
         case ButtonGesture::BOTH_RELEASE:    gestStr = "B_REL";    break;
     }
 
@@ -943,6 +1002,20 @@ void CC_JDI830::update()
         _buttonInput.forceRelease();
     }
 
+    // Change: Let's try managing buttons locally.  XXX
+    bool stepBtn = !digitalRead(0);
+    if(stepBtn != _stepButtonLastState) 
+    {
+        stepButtonStateChange(stepBtn);
+        _stepButtonLastState = stepBtn;
+    }
+
+    bool lfBtn = !digitalRead(14);
+    if(lfBtn != _lfButtonLastState) {
+        lfButtonStateChange(lfBtn);
+        _lfButtonLastState = lfBtn;
+    } 
+    
     // --- Fuel setup timed transitions ---
     // The "FUEL" splash shows for 1 second, then auto-advances to "FILL? N".
     if (_displayMode == DisplayMode::FUEL_SETUP
@@ -1025,7 +1098,7 @@ void CC_JDI830::update()
                 if (_autoScan) {
                     if (now - _lastPageChange > PAGE_ROTATE_MS) {
                         _lastPageChange = now;
-                        advanceBottomPage();
+                        advanceBottomPageAuto();
                     }
                 }
             }
@@ -1045,7 +1118,7 @@ void CC_JDI830::update()
                 // Alarm cleared — restore previous data mode
                 _bottomBarMode = _prevDataMode;
                 _bottomBar.clearAlarm();
-                _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+                showCurrentPage();
                 _lastPageChange = now;  // reset rotation timer
             }
             break;
@@ -1098,14 +1171,14 @@ void CC_JDI830::onStepPress() {
         } else {
             _bottomBarMode = _prevDataMode;
             _bottomBar.clearAlarm();
-            _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+            showCurrentPage();
             _lastPageChange = millis();
         }
     } else if (_bottomBarMode != BottomBarMode::ALARM) {
         // Advance to next page in current rotation
         if (_numBottomPages > 0) {
             _currentBottomPage = (_currentBottomPage + 1) % _numBottomPages;
-            _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+            showCurrentPage();
             _lastPageChange = millis();
         }
     }
@@ -1126,7 +1199,7 @@ void CC_JDI830::onStepLongPress() {
         } else {
             _bottomBarMode = _prevDataMode;
             _bottomBar.clearAlarm();
-            _bottomBar.setPage(_bottomPages[_currentBottomPage]);
+            showCurrentPage();
             _lastPageChange = millis();
         }
     }

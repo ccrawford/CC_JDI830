@@ -141,6 +141,7 @@ private:
 
     // Bottom bar page rotation state
     BottomPage _bottomPages[MAX_BOTTOM_PAGES];
+    bool       _excluded[MAX_BOTTOM_PAGES] = {};  // per-page exclusion from AUTO rotation
     int        _numBottomPages   = 0;
     int        _currentBottomPage = 0;
     uint32_t   _lastPageChange   = 0;
@@ -165,6 +166,8 @@ private:
 
     // Button / gesture input
     ButtonInput _buttonInput;
+    bool _lfButtonLastState = 0;
+    bool _stepButtonLastState = 0;
     void stepButtonStateChange(bool);
     void lfButtonStateChange(bool);
 
@@ -210,6 +213,9 @@ private:
 
     // Private helpers
     void advanceBottomPage();
+    void advanceBottomPageAuto();  // advance skipping excluded pages (AUTO mode)
+    void showCurrentPage();        // push current page to bottom bar with excluded flag
+    void toggleParamExclude();     // toggle exclude on current page (BOTH_TAP in MANUAL)
     void setupGauges();
     void drawStatic();
     static void applyRangeDef(Gauge& gauge, const GaugeRangeDef& def);

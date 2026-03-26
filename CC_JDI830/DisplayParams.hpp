@@ -108,7 +108,7 @@ inline DisplayVarInfo resolveDisplayVar(DisplayVarId id,
         case DisplayVarId::BATTERY:
             return { "BAT",   &prof.bat,     &state.bat,     1, avail };
         case DisplayVarId::OAT:
-            return { "OAT-C", &prof.oat,     &state.oat,     1, avail };
+            return { "OAT-C", &prof.oat,     &state.oat,     0, avail }; // No decimals for OAT
         case DisplayVarId::FUEL_FLOW:
             return { "GPH",   &prof.ff,      &state.ff,      1, avail };
         case DisplayVarId::FUEL_REM:

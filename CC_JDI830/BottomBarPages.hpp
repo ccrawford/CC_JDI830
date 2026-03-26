@@ -25,11 +25,17 @@ inline void drawDualLabelValue(LGFX_Sprite &spr, const BottomValueDef &def,
     float curVal = def.ptr ? *def.ptr : 0;
     int16_t center = xLeft + 30;
 
-    // Label (small)
+    // Label (small) — prepend dot if excluded from AUTO rotation
     spr.loadFont(ArialN11);
     spr.setTextColor(TFT_WHITE);
     spr.setTextDatum(MR_DATUM);
-    spr.drawString(def.label, center - 1, h / 2);
+    if (def.excluded) {
+        char lbl[10];
+        snprintf(lbl, sizeof(lbl), ".%s", def.label);
+        spr.drawString(lbl, center - 1, h / 2);
+    } else {
+        spr.drawString(def.label, center - 1, h / 2);
+    }
 
     // Value (large)
     spr.loadFont(SevenSeg42);
@@ -57,11 +63,17 @@ inline void drawSingleValueUnits(LGFX_Sprite &spr, const BottomValueDef &def,
     else
         spr.drawNumber((int)curVal, center - 3, h / 2);
 
-    // Units/label (large)
+    // Units/label (large) — prepend dot to label if excluded from AUTO rotation
     spr.loadFont(ArialNI36);
     spr.setTextColor(TFT_WHITE);
     spr.setTextDatum(ML_DATUM);
-    spr.drawString(def.units ? def.units : def.label, center + 3, h / 2);
+    if (!def.units && def.excluded) {
+        char lbl[10];
+        snprintf(lbl, sizeof(lbl), ".%s", def.label);
+        spr.drawString(lbl, center + 3, h / 2);
+    } else {
+        spr.drawString(def.units ? def.units : def.label, center + 3, h / 2);
+    }
 }
 
 inline void drawHHMMValue(LGFX_Sprite &spr, const BottomValueDef &def,
@@ -81,11 +93,17 @@ inline void drawHHMMValue(LGFX_Sprite &spr, const BottomValueDef &def,
     spr.setTextColor(colorForDef(def, curVal));
     spr.drawString(buf, center - 3, h /2);
 
+    // Units/label — prepend dot to label if excluded from AUTO rotation
     spr.loadFont(ArialNI36);
     spr.setTextColor(TFT_WHITE);
     spr.setTextDatum(ML_DATUM);
-    spr.drawString(def.units ? def.units : def.label, center + 3, h / 2);
-
+    if (!def.units && def.excluded) {
+        char lbl[10];
+        snprintf(lbl, sizeof(lbl), ".%s", def.label);
+        spr.drawString(lbl, center + 3, h / 2);
+    } else {
+        spr.drawString(def.units ? def.units : def.label, center + 3, h / 2);
+    }
 }
 
 // "LABEL value UNITS" — small label left, large value center, small units right
@@ -112,11 +130,17 @@ inline void drawLabelValueUnits(LGFX_Sprite &spr, const BottomValueDef &def,
     spr.drawString(buf, valX, h / 2);
     textWidth = spr.textWidth(buf);
 
-    // Label (small)
+    // Label (small) — prepend dot if excluded from AUTO rotation
     spr.loadFont(ArialN16);
     spr.setTextColor(TFT_WHITE);
     spr.setTextDatum(MR_DATUM);
-    spr.drawString(def.label, center - textWidth / 2 - 3, h / 2);
+    if (def.excluded) {
+        char lbl[10];
+        snprintf(lbl, sizeof(lbl), ".%s", def.label);
+        spr.drawString(lbl, center - textWidth / 2 - 3, h / 2);
+    } else {
+        spr.drawString(def.label, center - textWidth / 2 - 3, h / 2);
+    }
 
     // Units (small, after value)
     if (def.units && def.units[0])
@@ -154,6 +178,10 @@ inline void drawAlarmPage(LGFX_Sprite& spr, const AlarmDef& alarm,
     int16_t midX = w / 2;
     int16_t midY = h / 2;
 
+    int valueX = midX + midX /2; // Right half
+    int labelX = midX / 2;
+
+
     // --- Left side: value in white ---
     spr.loadFont(SevenSeg42);
     spr.setTextColor(TFT_WHITE);
@@ -178,6 +206,7 @@ inline void drawAlarmPage(LGFX_Sprite& spr, const AlarmDef& alarm,
         // Label (e.g. "CHT", "OIL", "BAT")
         spr.loadFont(ArialNI36);
         spr.setTextColor(TFT_RED);
+
 
         if (alarm.cylPtr) {
             // CHT alarm: label + cylinder number side by side
@@ -261,7 +290,8 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p, EngineStat
                       drawDualLabelValue,
                       makeValueDef("EGT", &state.egtSelected, 0, nullptr, p.egt),
                       drawDualLabelValue,
-                      makeValueDef("CHT", &state.chtSelected, 0, nullptr, p.cht)};
+                      makeValueDef("CHT", &state.chtSelected, 0, nullptr, p.cht),
+                      true};  // nonExcludable
     }
 
     // EGT / CHT peak
@@ -271,7 +301,8 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p, EngineStat
                       drawDualLabelValue,
                       makeValueDef("EGT-P", &state.egtPeak, 0, nullptr, p.egt),
                       drawDualLabelValue,
-                      makeValueDef("CHT-P", &state.chtPeak, 0, nullptr, p.cht)};
+                      makeValueDef("CHT-P", &state.chtPeak, 0, nullptr, p.cht),
+                      true};  // nonExcludable
     }
 
     // TIT1
@@ -281,7 +312,8 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p, EngineStat
                       drawSingleValueUnits,
                       makeValueDef("TIT", &state.tit1, 0, nullptr, p.tit1),
                       nullptr,
-                      {}};
+                      {},
+                      true};  // nonExcludable
     }
 
     // TIT2
@@ -291,7 +323,8 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p, EngineStat
                       drawSingleValueUnits,
                       makeValueDef("TIT2", &state.tit2, 0, nullptr, p.tit2),
                       nullptr,
-                      {}};
+                      {},
+                      true};  // nonExcludable
     }
 
     // OAT
@@ -347,7 +380,8 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p, EngineStat
                                    decimalsFor(DisplayVarId::OIL_TEMP, p, state), nullptr, p.oilT),
                       drawDualLabelValue,
                       makeValueDef("O-P", &state.oilP,
-                                   decimalsFor(DisplayVarId::OIL_PRESS, p, state), nullptr, p.oilP)};
+                                   decimalsFor(DisplayVarId::OIL_PRESS, p, state), nullptr, p.oilP),
+                      true};  // nonExcludable
     }
 
     // Battery
