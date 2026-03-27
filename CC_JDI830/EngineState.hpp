@@ -12,8 +12,10 @@
 // PlaneProfile; the caller passes in what's needed (cylinder count, etc.).
 // ---------------------------------------------------------------------------
 struct EngineState {
-    float egt[6] = {1462, 1396, 1500, 1401, 1199, 1466};   // Engine gas temp for cylinders
-    float cht[6] = {313,  312,  395,  314,  320,  386};    // Cylinder Head Temp for all cylinders
+    static constexpr int MAX_CYLINDERS = 6;
+
+    float egt[MAX_CYLINDERS] = {1462, 1396, 1500, 1401, 1199, 1466};   // Engine gas temp for cylinders
+    float cht[MAX_CYLINDERS] = {313,  312,  395,  314,  320,  386};    // Cylinder Head Temp for all cylinders
     float tit1        = 1535;   // Turbine Inlet Temp #1
     float tit2        = 1500;   // Turbine Inlet Temp #2
     float oilT   = 129;    // Oil Temp
@@ -33,7 +35,7 @@ struct EngineState {
     float waypointDist = 0;  // Distnace to next Waypoint (input)
     float req = 12.7f;  // Calculated fuel required to waypoint CALCULATED
     float res = 55.2f;  // Calculated fuel reserve at waypoint CALCULATED
-    float mpg    = 16.0f;   // Miles per gallon (calculated) CALCULATED
+    float mpg    = 16.0f;   // Miles per gallon passed in.
     float endurance = 185;   // Endurance in minutes time remaining until fuel exhaustion CALCULATED
     float ff    = 16.0f;   // Fuel Flow Gallons per hour
     float used   = 7.2;     // Calculated fuel used (gallons)
@@ -49,6 +51,7 @@ struct EngineState {
     float peakTemp = 0;   // Used in leaning
     bool  peakReached = false;   // Used in leaning
     unsigned long lastCoolingUpdate = 0;  // Used to determine cooling rate
+    float chtPrev[MAX_CYLINDERS] = {0};  // Previous CHT snapshot for cooling rate calc
 
     // Used for display
     bool showNormalized = false;
@@ -69,8 +72,8 @@ struct EngineState {
     // Each cylinder gets a slowly-wandering offset so the bars don't move
     // in lockstep.  Stored here (not in PlaneProfile) because it's mutable
     // runtime state, not a profile constant.
-    float egtDrift[6] = {0};
-    float chtDrift[6] = {0};
+    float egtDrift[MAX_CYLINDERS] = {0};
+    float chtDrift[MAX_CYLINDERS] = {0};
 
     // Previous raw values — used to detect whether the sim input is changing.
     // When the delta is large, drift is nudged actively (cylinders respond at
@@ -107,10 +110,8 @@ struct EngineState {
 
         if (ff > 0.01f) {
             endurance = (fuelRem / ff) * 60.0f;   // minutes
-            mpg = waypointDist / ff;               // NM per gallon (it's really NMPG)
         } else {
             endurance = 0;
-            mpg       = 0;
         }
 
         // Fuel required & reserve to waypoint
@@ -119,7 +120,8 @@ struct EngineState {
         //  so for now we approximate with ff directly — placeholder)
         if (ff > 0.01f && waypointDist > 0) {
             // TODO: needs groundspeed for a real calculation
-            req = 0;   // placeholder
+            if(mpg != 0) req = waypointDist / mpg;
+            else req = 0;
             res = fuelRem - req;
         } else {
             req = 0;
@@ -135,6 +137,52 @@ struct EngineState {
         // --- CHT cooling rate ---
         // Computed in updateCoolingRate() which needs millis() delta,
         // so it stays as a separate call driven by CC_JDI830::update().
+    }
+
+    // -----------------------------------------------------------------
+    // updateCoolingRate — compute worst-case CHT cooling across all
+    // cylinders, in degrees per minute.
+    //
+    // Called every frame from updateCalculatedFields(), but only
+    // recalculates every COOLING_INTERVAL_MS (3 s).  On the first call
+    // (lastCoolingUpdate == 0) it just snapshots CHT and returns so
+    // there's no spurious rate at power-up.
+    //
+    // Only COOLING (temperature dropping) counts.  The reported rate is
+    // the worst (fastest) single cylinder, not an average — one cylinder
+    // shock-cooling is the real hazard.
+    // -----------------------------------------------------------------
+    void updateCoolingRate(unsigned long nowMs, int numCylinders) {
+        static constexpr unsigned long COOLING_INTERVAL_MS = 3000;
+
+        // Bootstrap: first call after power-up or profile switch —
+        // snapshot current CHTs so we have a baseline next time.
+        if (lastCoolingUpdate == 0) {
+            for (int i = 0; i < numCylinders; i++) chtPrev[i] = cht[i];
+            lastCoolingUpdate = nowMs;
+            return;
+        }
+
+        // Not time yet — skip
+        unsigned long elapsed = nowMs - lastCoolingUpdate;
+        if (elapsed < COOLING_INTERVAL_MS) return;
+
+        // Compute worst (fastest) cooling rate across all cylinders
+        float worstRate = 0.0f;
+        float minutes   = elapsed / 60000.0f;
+
+        for (int i = 0; i < numCylinders; i++) {
+            float drop = chtPrev[i] - cht[i];   // positive = cooling
+            if (drop > 0.0f) {
+                float rate = drop / minutes;     // deg/min
+                if (rate > worstRate) worstRate = rate;
+            }
+            chtPrev[i] = cht[i];                 // snapshot for next interval
+        }
+
+        coldRate = worstRate;
+        isCold   = (coldRate >= 60.0f);          // matches RED zone threshold
+        lastCoolingUpdate = nowMs;
     }
 
     // -----------------------------------------------------------------

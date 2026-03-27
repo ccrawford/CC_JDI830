@@ -57,7 +57,7 @@ enum class DisplayMode : uint8_t {
     AUTO,              // parameters rotate automatically
     MANUAL,            // user manually steps through parameters with STEP
     LEAN_FIND,         // lean find procedure is active
-    LEAN_PEEK,         // showing peak EGT while LF is held (during lean find)
+    LEAN_PEAK,         // showing peak EGT while LF is held (during lean find)
     PILOT_PROGRAM,     // pilot programming mode (future)
 };
 
@@ -83,12 +83,13 @@ enum class FuelSetupPhase : uint8_t {
 //
 // The lean find procedure has its own progression.  The outer state machine
 // knows we're "in lean find"; this enum tracks *where* in the procedure.
-// Only meaningful when DisplayMode == LEAN_FIND or LEAN_PEEK.
+// Only meaningful when DisplayMode == LEAN_FIND or LEAN_PEAK.
 // ---------------------------------------------------------------------------
 enum class LeanPhase : uint8_t {
     PRE_LEAN,          // before leaning begins — can toggle Rich/Lean of Peak
     LEANING,           // user is leaning mixture, watching EGT rise
     PEAK_FOUND,        // peak detected, showing degrees below peak
+    FINALIZING,        // showing delta from peak EGT + FF (hold LF for absolute)
 };
 
 class CC_JDI830
@@ -174,6 +175,25 @@ private:
     // Display mode state machine
     DisplayMode _displayMode = DisplayMode::FUEL_SETUP;  // starts with fuel wizard
     LeanPhase   _leanPhase   = LeanPhase::PRE_LEAN;
+    LeanPhase   _prevLeanPhase   = LeanPhase::PRE_LEAN;
+    uint32_t    _leanPhaseStartTime = 0;  // millis() when current lean phase began
+
+    // Lean finder tracking state
+    // Baselines are the EGT values when lean find starts.  A cylinder is
+    // "armed" (ready to detect peak) once it rises >= LEAN_ARM_RISE above
+    // its baseline.  Per-cylinder peaks track the highest EGT seen so far.
+    static constexpr float LEAN_ARM_RISE   = 15.0f;  // °F rise to arm
+    static constexpr float LEAN_PEAK_DROP  =  1.0f;  // °F drop from peak to declare peaked
+    float    _leanBaseline[MAX_CYLINDERS] = {};   // EGT snapshot when entering LEANING
+    float    _leanCylPeak[MAX_CYLINDERS]  = {};   // highest EGT seen per cylinder during LEANING
+    bool     _leanArmed       = false; // true once any cylinder rises >= LEAN_ARM_RISE
+    int      _leanPeakedCyl   = -1;    // which cylinder peaked first (-1 = none yet)
+
+    float    _leanDelta       = 0.0f;   // live: current EGT minus peak for peaked cylinder
+    void updateLeanFinder();
+
+
+
     void handleGesture(ButtonGesture gesture);
     void updateStatusLabels();
 
@@ -183,6 +203,8 @@ private:
     float    _fuelAdjustValue = 0;     // working value for FILL_ADJUST (+/-)
     char     _fuelSetupBuf[32] = {};   // persistent buffer for fuel setup display text
     void updateFuelSetupDisplay(uint32_t now);
+
+
 
     // Fine-adjustment hold-repeat state (FILL_ADJUST_FINE phase).
     // While LF is held, increments +0.1 every 300ms.  After 3 seconds

@@ -131,8 +131,13 @@ public:
             }
         }
 
-        // If BOTH is active and both still held, check for hold threshold. (This is the 5 second hold)
-        if (_bothActive && (!_stepDown || !_lfDown)) {
+        // If BOTH is active and both still held, check for hold thresholds.
+        // Check longest threshold first — at 7s, the 5s condition is also true.
+        if (_bothActive && _stepDown && _lfDown) {
+            if (!_bothLongHoldFired && (now - _bothDownAt >= LONG_HOLD_THRESHOLD_MS)) {
+                _bothLongHoldFired = true;
+                return ButtonGesture::BOTH_HOLD_LONG;
+            }
             if (!_bothHoldFired && (now - _bothDownAt >= HOLD_THRESHOLD_MS)) {
                 _bothHoldFired = true;
                 return ButtonGesture::BOTH_HOLD;
@@ -140,20 +145,9 @@ public:
             return ButtonGesture::NONE;  // still waiting
         }
 
-        // If BOTH is active and both still held, check for hold threshold. (This is the 7 second hold)
-        if (_bothActive && _stepDown && _lfDown) {
-            if (!_bothHoldFired && (now - _bothDownAt >= LONG_HOLD_THRESHOLD_MS)) {
-                _bothLongHoldFired = true;
-                return ButtonGesture::BOTH_HOLD_LONG;
-            }
-            return ButtonGesture::NONE;  // still waiting
-        }
-
-
-        // If BOTH was active but one or both released, check for tap vs hold.
+        // If BOTH was active but one or both released, check for queued gesture
+        // from _handleBothRelease (BOTH_TAP or BOTH_RELEASE).
         if (_bothActive && (!_stepDown || !_lfDown)) {
-            // Already handled by _handleBothRelease via change events,
-            // but check if a queued release gesture is ready.
             if (_pendingGesture != ButtonGesture::NONE) {
                 ButtonGesture g = _pendingGesture;
                 _pendingGesture = ButtonGesture::NONE;
@@ -297,7 +291,7 @@ private:
 
         _bothActive = false;
 
-        if (_bothHoldFired) {
+        if (_bothHoldFired || _bothLongHoldFired) {
             // Hold was already emitted — now emit the release.
             _pendingGesture = ButtonGesture::BOTH_RELEASE;
         } else {

@@ -53,7 +53,7 @@ All gauges inherit from a base class in `JPIGauges.hpp` that owns an LGFX_Sprite
 - `FUEL_SETUP` → power-up fuel entry wizard (multi-phase sub-state machine via `FuelSetupPhase`)
 - `AUTO` → bottom bar pages rotate every 5 seconds
 - `MANUAL` → user steps through pages with STEP button
-- `LEAN_FIND` / `LEAN_PEEK` → lean-find procedure with sub-states via `LeanPhase`
+- `LEAN_FIND` / `LEAN_PEAK` → lean-find procedure with sub-states via `LeanPhase`
 
 **BottomBarMode** controls what content the bottom bar shows (ALL_DATA, ALARM, LEAN, SETUP, etc.).
 

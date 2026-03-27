@@ -105,6 +105,11 @@
         "description": "Total Fuel Capacity in Gallons"
       },
       {
+        "id": 22,
+        "label": "MPG",
+        "description": "GPS Ground Speed in Knots / Fuel Flow in Gallons per Hour"
+      },
+      {
         "id": 17,
         "label": "HP",
         "description": "Engine current Horse Power"

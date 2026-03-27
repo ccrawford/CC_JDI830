@@ -94,6 +94,16 @@ private:
     bool _normalizeMode;
     float _nrmBaseline[MAX_CYLINDERS]; // EGT snapshot taken when normalize is activated
 
+    // --- EGT bar flash (lean finder) ---
+    // When a cylinder rises enough during lean find, its EGT bar flashes
+    // to draw the pilot's attention.  The flash toggle is timer-driven in
+    // update(), same pattern as the alarm flash in BottomBar.
+    int      _flashCylinder = -1;     // which EGT bar flashes (-1 = none)
+    bool     _flashOn       = true;
+    uint32_t _flashTime     = 0;
+    static constexpr uint32_t EGT_FLASH_ON_MS  = 500;
+    static constexpr uint32_t EGT_FLASH_OFF_MS = 500;
+
 protected:
     void drawGauge() override
     {
@@ -221,7 +231,10 @@ private:
             // EGT bar (left bar in each pair)
             float egtVal = _egtPtrs[cyl] ? *_egtPtrs[cyl] : 0;
 
-            if (_normalizeMode)
+            // Flash: skip drawing this EGT bar during the "off" phase
+            bool drawEgt = !(cyl == _flashCylinder && !_flashOn);
+
+            if (drawEgt && _normalizeMode)
             {
                 // Normalize view: build a synthetic scale where the baseline
                 // maps to half chart height and each segment = 10°F deviation.
@@ -250,12 +263,11 @@ private:
                 // No redline coloring in normalize mode (deviation display)
                 drawSegmentedBar(colX, synVal, 0.0f, fullScale, _egtColor);
             }
-            else
+            else if (drawEgt)
             {
                 dispColor = egtVal >= _egtRedline ? TFT_RED : _egtColor;
                 drawSegmentedBar(colX, egtVal, _egtMin, _egtMax, dispColor);
             }
-
             // CHT bar (right bar in each pair)
             float chtVal = _chtPtrs[cyl] ? *_chtPtrs[cyl] : 0;
             dispColor = chtVal >= _chtRedline ? TFT_RED : _chtColor;
@@ -387,10 +399,13 @@ private:
             char buf[4];
             snprintf(buf, sizeof(buf), "%d", cyl + 1);
 
-            if (cyl == _selectedCylinder)
+            // Boxed number: solid box for selected cylinder,
+            // flashing box for flash cylinder (lean finder hottest EGT)
+            bool drawBox = (cyl == _selectedCylinder)
+                        || (cyl == _flashCylinder && _flashOn);
+
+            if (drawBox)
             {
-                // Draw boxed number for selected cylinder
-                int16_t tw = _sprite.textWidth(buf);
                 int16_t th = _sprite.fontHeight();
                 int16_t bx = cx - th / 2;
                 int16_t by = _chartBottom + 2;
@@ -520,6 +535,21 @@ public:
         _dirty = true;
     }
 
+    // --- EGT bar flash control (used by lean finder) ---
+    // setFlashCylinder: start flashing the specified cylinder's EGT bar.
+    // clearFlashCylinder: stop flashing (bar draws normally again).
+    void setFlashCylinder(int cyl) {
+        if (cyl == _flashCylinder) return;  // no change — don't reset flash timing
+        _flashCylinder = cyl;
+        _flashOn = true;
+        _flashTime = millis();
+        _dirty = true;
+    }
+    void clearFlashCylinder() {
+        _flashCylinder = -1;
+        _dirty = true;
+    }
+
     // --- EGT Normalize mode ---
     // When switching to normalize, snapshot all current EGT values as the
     // baseline. All EGT bars will then display at half chart height, with
@@ -646,6 +676,21 @@ public:
     // function that never gets called. Always use it.
     void update() override
     {
+        // --- EGT flash toggle ---
+        if (_flashCylinder >= 0) {
+            uint32_t now = millis();
+            uint32_t elapsed = now - _flashTime;
+            if (_flashOn && elapsed >= EGT_FLASH_ON_MS) {
+                _flashOn = false;
+                _flashTime = now;
+                _dirty = true;
+            } else if (!_flashOn && elapsed >= EGT_FLASH_OFF_MS) {
+                _flashOn = true;
+                _flashTime = now;
+                _dirty = true;
+            }
+        }
+
         // Check all EGT/CHT values for changes
         for (int i = 0; i < _numCylinders; i++)
         {
