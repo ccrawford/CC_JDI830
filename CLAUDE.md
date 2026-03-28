@@ -41,7 +41,7 @@ The display is entirely driven by **PlaneProfile** objects (const, in flash):
 
 All gauges inherit from a base class in `JPIGauges.hpp` that owns an LGFX_Sprite, position, range, and value pointer. Gauges only redraw when their value changes (dirty-flag optimization).
 
-- **ArcGauge**: RPM and MAP (circular arcs with needles)
+- **ArcGauge**: RPM and MAP (circular arcs with pointers)
 - **ColumnBarGauge**: EGT/CHT vertical columns (6 or 4 cylinders, optional TIT)
 - **HBarGauge**: Right-column horizontal bars (oil temp, fuel flow, battery, etc.)
 - **ValueGauge**: Simple numeric display (% HP)

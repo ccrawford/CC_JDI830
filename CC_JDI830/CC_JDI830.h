@@ -23,6 +23,8 @@
 #include "AlarmManager.hpp"
 #include "ButtonInput.hpp"
 
+#define TFT_TRANSPARENT TFT_PINK
+
 // ---------------------------------------------------------------------------
 // BottomBarMode — which system currently "owns" the bottom bar.
 //
@@ -85,6 +87,18 @@ enum class FuelSetupPhase : uint8_t {
 // knows we're "in lean find"; this enum tracks *where* in the procedure.
 // Only meaningful when DisplayMode == LEAN_FIND or LEAN_PEAK.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// ScanSwitch — position of the 3-way select switch on the instrument panel.
+//
+// Filters which scanner pages are shown.  Received from MobiFlight as
+// message ID 23 (0=EGT, 1=ALL, 2=FF).
+// ---------------------------------------------------------------------------
+enum class ScanSwitch : uint8_t {
+    EGT = 0,   // Temperature position — show TEMP + BOTH pages
+    ALL = 1,   // All position — show everything
+    FF  = 2,   // Fuel Flow position — show FUEL + BOTH pages
+};
+
 enum class LeanPhase : uint8_t {
     PRE_LEAN,          // before leaning begins — can toggle Rich/Lean of Peak
     LEANING,           // user is leaning mixture, watching EGT rise
@@ -157,6 +171,9 @@ private:
 
     // Auto vs Manual scan
     bool _autoScan = false;  // starts false — device begins in FUEL_SETUP then MANUAL
+
+    // 3-position select switch — filters which scanner pages are visible
+    ScanSwitch _scanSwitch = ScanSwitch::ALL;
 
     // Current profile index (tracks activeProfile for change detection)
     // Starts at -1 so the first setProfile() call always applies.

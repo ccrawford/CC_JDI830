@@ -164,15 +164,16 @@ public:
 
         if (_dirty)
         {
+
             _sprite.fillSprite(TFT_BLACK); // clear before drawing
 
             if (_showBounds)
             {
-                _sprite.drawRect(0, 0, _w, _h, TFT_PINK);
+                _sprite.drawRect(0, 0, _w, _h, TFT_GOLD);
             }
 
             drawGauge();
-            _sprite.pushSprite(_x, _y);
+            _sprite.pushSprite(_x, _y, TFT_TRANSPARENT);
             _dirty = false;
         }
     }

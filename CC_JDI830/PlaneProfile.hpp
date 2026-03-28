@@ -102,6 +102,8 @@ struct PlaneProfile {
     GaugeRangeDef iat;
     GaugeRangeDef dif;
     GaugeRangeDef req;
+    GaugeRangeDef res;             // fuel reserve at waypoint (calculated)
+    GaugeRangeDef intercoolerEff;  // intercooler cooling effectiveness: CDT - IAT (calculated)
     GaugeRangeDef coldRate;
 
     // Note: fuelCapacity is in EngineState, not here — it's a sim-reported

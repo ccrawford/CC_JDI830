@@ -82,7 +82,6 @@ void CC_JDI830::setupGauges() {
     _rpmGauge.setArcGeometry(L.rpmArc.cx, L.rpmArc.cy,
                               L.rpmArc.outerR, L.rpmArc.innerR);
     _rpmGauge.setAngles(L.rpmArc.startAngle, L.rpmArc.endAngle);
-    _rpmGauge.setNeedle(L.rpmArc.needleLen, TFT_WHITE);
     _rpmGauge.setValueFont(arcValueFont);
     _rpmGauge.setLabelFont(ArialNB12);
     _rpmGauge.setLabelY(L.rpmArc.labelY);
@@ -98,7 +97,6 @@ void CC_JDI830::setupGauges() {
                                   L.mapArc.outerR, L.mapArc.innerR);
         _mapGauge.setInverted(L.mapInverted);
         _mapGauge.setAngles(L.mapArc.startAngle, L.mapArc.endAngle);
-        _mapGauge.setNeedle(L.mapArc.needleLen, TFT_WHITE);
         _mapGauge.setDecimals(1);
         _mapGauge.setValueFont(arcValueFont);
         _mapGauge.setLabelFont(ArialNB12);
@@ -434,6 +432,14 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
         curState.mpg = strtof(setPoint, nullptr);
         break;
 
+    case 23: {
+        // 3-position select switch: 0=EGT (temps), 1=ALL, 2=FF (fuel)
+        int val = atoi(setPoint);
+        if (val >= 0 && val <= 2)
+            _scanSwitch = static_cast<ScanSwitch>(val);
+        break;
+    }
+
     default:
         break;
     }
@@ -458,10 +464,33 @@ void CC_JDI830::updateCalculatedFields()
     curState.updateCoolingRate(millis(), nCyl);
 }
 
+// ---------------------------------------------------------------------------
+// pageMatchesSwitch — does this page's ScanGroup pass the current switch?
+//
+// ScanGroup is a bitmask: TEMP=0x01, FUEL=0x02, BOTH=0x03.
+// ScanSwitch::ALL shows everything; EGT shows pages with TEMP bit;
+// FF shows pages with FUEL bit.  BOTH pages always pass.
+// ---------------------------------------------------------------------------
+static bool pageMatchesSwitch(ScanGroup group, ScanSwitch sw)
+{
+    if (sw == ScanSwitch::ALL) return true;
+    uint8_t mask = (sw == ScanSwitch::EGT) ? 0x01 : 0x02;
+    return (static_cast<uint8_t>(group) & mask) != 0;
+}
+
+// ---------------------------------------------------------------------------
+// advanceBottomPage — manual mode: advance to next page that matches the
+// current scan switch position.
+// ---------------------------------------------------------------------------
 void CC_JDI830::advanceBottomPage()
 {
-     _currentBottomPage = (_currentBottomPage + 1) % _numBottomPages;
-     showCurrentPage();
+    if (_numBottomPages <= 0) return;
+    for (int i = 0; i < _numBottomPages; i++) {
+        _currentBottomPage = (_currentBottomPage + 1) % _numBottomPages;
+        if (pageMatchesSwitch(_bottomPages[_currentBottomPage].group, _scanSwitch))
+            break;
+    }
+    showCurrentPage();
 }
 
 // ---------------------------------------------------------------------------
@@ -471,12 +500,18 @@ void CC_JDI830::advanceBottomPage()
 // The loop is bounded by _numBottomPages to prevent infinite looping if
 // every excludable page is excluded (non-excludable pages always remain).
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// advanceBottomPageAuto — advance to next page that is not excluded AND
+// matches the current scan switch position.
+// ---------------------------------------------------------------------------
 void CC_JDI830::advanceBottomPageAuto()
 {
     if (_numBottomPages <= 0) return;
     for (int i = 0; i < _numBottomPages; i++) {
         _currentBottomPage = (_currentBottomPage + 1) % _numBottomPages;
-        if (!_excluded[_currentBottomPage]) break;
+        if (!_excluded[_currentBottomPage] &&
+            pageMatchesSwitch(_bottomPages[_currentBottomPage].group, _scanSwitch))
+            break;
     }
     showCurrentPage();
 }
@@ -680,6 +715,6 @@ void CC_JDI830::update()
     _hpPct.update();
 
     // Debug overlay — shows mode, gesture, button state, connection status.
-  //  drawDebugState(gesture);
+    drawDebugState(gesture);
 }
 

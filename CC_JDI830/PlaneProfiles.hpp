@@ -79,6 +79,9 @@ static const PlaneProfile PROFILE_A2A_COMANCHE = {
     .cdt     = {},
     .iat     = {},
     .dif     = { 0, 500, 0,        { {0, 300, TFT_GREEN}, {300, 500, TFT_RED} }, 2 },
+    .req     = { 0, 70, 0,         { {0, 70, TFT_GREEN} }, 1 },
+    .res     = { 0, 70, 0,         { {0, 5, TFT_RED}, {5, 70, TFT_GREEN} }, 2 },
+    .intercoolerEff = {},           // no turbo — no intercooler
     .coldRate= { 0, 100, 60,        { {0, 40, TFT_GREEN}, {40,60, TFT_YELLOW}, {60,200, TFT_RED} }, 3 },
 };
 
@@ -143,6 +146,9 @@ static const PlaneProfile PROFILE_CESSNA_T206H = {
     .cdt     = { 0, 500, 450,      { {0, 400, TFT_GREEN}, {400, 450, TFT_YELLOW}, {450, 500, TFT_RED} }, 3 },
     .iat     = { 0, 300, 250,      { {0, 200, TFT_GREEN}, {200, 250, TFT_YELLOW}, {250, 300, TFT_RED} }, 3 },
     .dif     = { 0, 500, 0,        { {0, 300, TFT_GREEN}, {300, 500, TFT_RED} }, 2 },
+    .req     = { 0, 92, 0,         { {0, 92, TFT_GREEN} }, 1 },
+    .res     = { 0, 92, 0,         { {0, 5, TFT_RED}, {5, 92, TFT_GREEN} }, 2 },
+    .intercoolerEff = { 0, 100, 0, { {0, 100, TFT_GREEN} }, 1 },  // CDT - IAT cooling percentage
     .coldRate= { 0, 100, 60,        { {0, 40, TFT_GREEN}, {40,60, TFT_YELLOW}, {60,200, TFT_RED} }, 3 },
 };
 
@@ -207,6 +213,9 @@ static const PlaneProfile PROFILE_CESSNA_172S = {
     .cdt     = {},
     .iat     = {},
     .dif     = { 0, 400, 0,        { {0, 200, TFT_GREEN}, {200, 400, TFT_RED} }, 2 },
+    .req     = { 0, 56, 0,         { {0, 56, TFT_GREEN} }, 1 },
+    .res     = { 0, 56, 0,         { {0, 5, TFT_RED}, {5, 56, TFT_GREEN} }, 2 },
+    .intercoolerEff = {},           // no turbo — no intercooler
     .coldRate= { 0, 100, 60,        { {0, 40, TFT_GREEN}, {40,60, TFT_YELLOW}, {60,200, TFT_RED} }, 3 },
 };
 

@@ -112,7 +112,6 @@ inline DisplayConfig buildDefaultConfig(const PlaneProfile& profile) {
     if (maxSlots > MAX_RIGHT_BAR_SLOTS) maxSlots = MAX_RIGHT_BAR_SLOTS;
     if (maxSlots < 0) maxSlots = 0;
     cfg.numRightBarSlots = maxSlots;
-delay(5000);
    // Serial.printf("maxSlots=%d numSlots=%d\n", maxSlots, cfg.numRightBarSlots);
     // Build a default gauge selection from what the profile supports.
     // Start with the "classic" order, skip anything unavailable, then

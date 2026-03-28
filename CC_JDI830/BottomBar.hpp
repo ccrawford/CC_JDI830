@@ -16,6 +16,18 @@ enum class BottomMode : uint8_t
     ALARM    // engine alarm: white value left, flashing red label right
 };
 
+// ---------------------------------------------------------------------------
+// ScanGroup — which 3-position select switch setting(s) show this page.
+//
+// The real EDM830 has a toggle switch: EGT (temps), FF (fuel), ALL (both).
+// Values are bitmask flags so BOTH = TEMP | FUEL.
+// ---------------------------------------------------------------------------
+enum class ScanGroup : uint8_t {
+    TEMP = 0x01,   // T position — temperature/electrical parameters
+    FUEL = 0x02,   // F position — fuel flow parameters
+    BOTH = 0x03,   // T+F — visible in ALL and in both individual positions
+};
+
 struct BottomValueDef
 {
     const char  *label;
@@ -56,6 +68,7 @@ struct BottomPage {
     BottomDrawFn   rightDraw;    // draw function for right slot (DUAL only)
     BottomValueDef right;
     bool           nonExcludable; // true = cannot be excluded (EGT, CHT, TIT, OIL_TEMP)
+    ScanGroup      group = ScanGroup::BOTH;  // which select switch position(s) show this page
 };
 
 class BottomBar : public Gauge {

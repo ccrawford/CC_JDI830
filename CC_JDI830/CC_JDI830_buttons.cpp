@@ -661,13 +661,21 @@ void CC_JDI830::drawDebugState(ButtonGesture gesture) {
         case ButtonGesture::BOTH_RELEASE:    gestStr = "B_REL";    break;
     }
 
-    // Build the debug line:  "AUTO  S_TAP  S:0 L:1  CONN"
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%-6s %-6s S:%d L:%d %s",
+    const char* swStr = "ALL";
+    switch (_scanSwitch) {
+        case ScanSwitch::EGT: swStr = "EGT"; break;
+        case ScanSwitch::ALL: swStr = "ALL"; break;
+        case ScanSwitch::FF:  swStr = "FF";  break;
+    }
+
+    // Build the debug line:  "AUTO  S_TAP  S:0 L:1  CONN  ALL"
+    char buf[80];
+    snprintf(buf, sizeof(buf), "%-6s %-6s S:%d L:%d %s %s",
              modeStr, gestStr,
              _buttonInput.isStepDown() ? 1 : 0,
              _buttonInput.isLfDown() ? 1 : 0,
-             _connectionLost ? "LOST" : "CONN");
+             _connectionLost ? "LOST" : "CONN",
+             swStr);
 
     // Draw directly to LCD (not a sprite) in the bottom rows.
     // Black fill first to clear previous text, then white text on black.

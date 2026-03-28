@@ -26,7 +26,6 @@ private:
     int16_t _innerR;  // inner radius of the color band (band thickness = outer - inner)
 
     // Needle
-    int16_t _needleLen; // length from center to tip
     int _needleColor;
 
     // Redline marker value (the red X on the JPI)
@@ -53,9 +52,20 @@ protected:
         drawRedlineMark();
         drawValue();
         drawLabel();
+        drawHPCutouts();
     }
 
 private:
+
+    // The horsepower gets drawn on top of the gap between gauges. To avoid soem flickering, we'll 
+    // draw a transparent cutout for it in our sprite. This is a total hack. I mean, we should at 
+    // least pass in the areas to block out.
+    void drawHPCutouts() {
+        _sprite.fillRect(0,0,40,25, TFT_TRANSPARENT);
+        _sprite.fillRect(_w - 40, 0, _w, 25, TFT_TRANSPARENT);
+    }
+
+
     // Convert a gauge value to an angle on the arc.
     float valueToAngle(float val)
     {
@@ -238,7 +248,7 @@ public:
         : Gauge(lcd), _startAngle(135.0f) // default: JPI-style 270° sweep
           ,
           _endAngle(45.0f), _inverted(false), _cx(0), _cy(0), _outerR(60), _innerR(55)
-          ,_needleLen(50), _needleColor(TFT_WHITE)
+          , _needleColor(TFT_WHITE)
           , _valueFont(nullptr), _labelFont(nullptr), _decimals(0)
     {
     }
@@ -257,9 +267,8 @@ public:
         _endAngle = endDeg;
     }
     void setInverted(bool inverted) { _inverted = inverted; }
-    void setNeedle(int16_t length, int color)
+    void setNeedle(int color)
     {
-        _needleLen = length;
         _needleColor = color;
     }
 

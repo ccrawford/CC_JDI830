@@ -17,14 +17,12 @@ struct GaugeRect {
 // outerR, innerR — radii of the colored arc band
 // startAngle, endAngle — sweep in degrees (LovyanGFX convention:
 //                         0° = 3 o'clock, clockwise)
-// needleLen    — length of the needle from center
 // labelY       — y-position for the label text (e.g. "RPM") within the sprite
 // ---------------------------------------------------------------------------
 struct ArcParams {
     int16_t cx, cy;
     int16_t outerR, innerR;
     float   startAngle, endAngle;
-    int16_t needleLen;
     int16_t labelY;
 };
 
@@ -106,13 +104,13 @@ static constexpr GaugeLayout LAYOUT_PORTRAIT = {
 
     //               x    y    w    h
     .rpm    = {     10,   1, 205,  90 },
-    //             cx   cy  outerR innerR  startAngle  endAngle  needleLen  labelY
-    .rpmArc = {    75,  85,    75,    70,    182.0f,    358.0f,       55,     25 },
+    //             cx   cy  outerR innerR  startAngle  endAngle   labelY
+    .rpmArc = {    75,  85,    75,    70,    182.0f,    358.0f,     25 },
 
     //               x    y    w    h
     .map         = { 10,  95, 205,  90 },
-    //             cx   cy  outerR innerR  startAngle  endAngle  needleLen  labelY
-    .mapArc      = { 75,   2,   75,   70,   178.0f,      2.0f,      55,     42 },
+    //             cx   cy  outerR innerR  startAngle  endAngle    labelY
+    .mapArc      = { 75,   2,   75,   70,   178.0f,      2.0f,      42 },
     .mapInverted = true,
 
     .hpPct       = {  2, 185,  90,  20 },
@@ -171,7 +169,6 @@ static constexpr GaugeLayout buildLandscape() {
     // Arc geometry (intrinsic to the arc shape, not derivable from boundaries)
     constexpr int16_t arcOuterR  = 60;
     constexpr int16_t arcInnerR  = 55;
-    constexpr int16_t arcNeedleLen = 40;
     constexpr float   arcStartAngle = 202.0f;
     constexpr float   arcEndAngle   = 338.0f;
     constexpr int16_t arcLabelY  = 1;       // label above the arc
@@ -239,12 +236,12 @@ static constexpr GaugeLayout buildLandscape() {
     // RPM arc
     L.rpm    = { rpmX, 0, arcW, arcH };
     L.rpmArc = { arcCx, arcCy, arcOuterR, arcInnerR,
-                 arcStartAngle, arcEndAngle, arcNeedleLen, arcLabelY };
+                 arcStartAngle, arcEndAngle, arcLabelY };
 
     // MAP arc — same geometry, not inverted
     L.map         = { mapX, 0, arcW, arcH };
     L.mapArc      = { arcCx, arcCy, arcOuterR, arcInnerR,
-                       arcStartAngle, arcEndAngle, arcNeedleLen, arcLabelY };
+                       arcStartAngle, arcEndAngle, arcLabelY };
     L.mapInverted = false;
 
     // %HP

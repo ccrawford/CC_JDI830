@@ -38,6 +38,8 @@ enum class DisplayVarId : uint8_t {
     FUEL_REQ,
     COLD,
     FUEL_USED,
+    FUEL_RES,          // fuel reserve at waypoint (calculated)
+    INTERCOOLER_EFF,   // intercooler cooling effectiveness: CDT - IAT (calculated)
     // ---
     COUNT          // must be last — gives the total number of variables
 };
@@ -68,7 +70,9 @@ inline bool PlaneProfile::isAvailable(DisplayVarId id) const {
         case DisplayVarId::MAP:        return hasMap;
         case DisplayVarId::FUEL_REQ:   return hasReq;
         case DisplayVarId::FUEL_USED:  return hasUsed;
-        case DisplayVarId::COLD:       return hasColdRate;  // TODO: add hasCold to PlaneProfile
+        case DisplayVarId::COLD:       return hasColdRate;
+        case DisplayVarId::FUEL_RES:   return hasRes;
+        case DisplayVarId::INTERCOOLER_EFF: return hasCdt && hasIat;  // derived — no dedicated flag
         default:                       return false;
     }
 }
@@ -131,6 +135,10 @@ inline DisplayVarInfo resolveDisplayVar(DisplayVarId id,
             return { "USD",   &prof.used,    &state.used,    1, avail };
         case DisplayVarId::COLD:
             return { "CLD",   &prof.coldRate,    &state.coldRate,    0, avail };
+        case DisplayVarId::FUEL_RES:
+            return { "RES",   &prof.res,         &state.res,         1, avail };
+        case DisplayVarId::INTERCOOLER_EFF:
+            return { "C-I",   &prof.intercoolerEff, &state.cdtLessIat, 0, avail };
         default:
             return { "???",   nullptr,       nullptr,        0, false };
     }
