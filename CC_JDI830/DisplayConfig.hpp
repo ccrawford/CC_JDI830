@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DisplayParams.hpp"
+#include "GaugeLayout.hpp"
 
 // ---------------------------------------------------------------------------
 // LayoutMode — which screen layout to use.
@@ -38,13 +39,18 @@ static constexpr int MAX_RIGHT_BAR_SLOTS = 10;
 struct DisplayConfig {
     LayoutMode layoutMode = LayoutMode::PORTRAIT;
 
+    // --- Active layout geometry ---
+    // Points to a static constexpr GaugeLayout (LAYOUT_PORTRAIT or
+    // LAYOUT_LANDSCAPE).  All gauge positions and sizes come from here.
+    const GaugeLayout* layout = &LAYOUT_PORTRAIT;
+
     // --- Right-column HBar gauges ---
     int          numRightBarSlots = 5;
     DisplayVarId rightBarSelections[MAX_RIGHT_BAR_SLOTS] = {};
 
     // --- Right-column positioning (pixels) ---
-    // These are the layout constants that setupRightBars() uses.
-    // Pulled out here so that different layouts can override them.
+    // Seeded from the active GaugeLayout, then possibly adjusted by
+    // compact (4-cyl) overrides in buildDefaultConfig().
     int barX        = 220;
     int barY        = -20;
     int barW        = 80;
@@ -52,7 +58,7 @@ struct DisplayConfig {
     int barYSpacing = 34;
 
     // --- EGT/CHT column bar width ---
-    // For portrait: 310 for 6-cyl, ~205 for 4-cyl.  Landscape may differ.
+    // Seeded from GaugeLayout::egtCht.w, then overridden for 4-cyl compact.
     int egtChtWidth = 310;
 };
 
@@ -67,24 +73,47 @@ struct DisplayConfig {
 // ---------------------------------------------------------------------------
 inline DisplayConfig buildDefaultConfig(const PlaneProfile& profile) {
     DisplayConfig cfg;
+
+    // Select layout based on compile-time flag
+#ifdef USE_LANDSCAPE
+    cfg.layoutMode = LayoutMode::LANDSCAPE;
+    cfg.layout     = &LAYOUT_LANDSCAPE;
+#else
     cfg.layoutMode = LayoutMode::PORTRAIT;
+    cfg.layout     = &LAYOUT_PORTRAIT;
+#endif
 
-    // 4-cylinder engines use a narrower EGT/CHT column, freeing ~105px
-    // of vertical space on the right side for additional HBar rows.
+    // Seed right-bar positioning and EGT/CHT width from the active layout.
+    // These are the defaults for 6-cyl; compact (4-cyl) overrides below.
+    const GaugeLayout& L = *cfg.layout;
+    cfg.barX        = L.barX;
+    cfg.barY        = L.barY;
+    cfg.barW        = L.barW;
+    cfg.barH        = L.barH;
+    cfg.barYSpacing = L.barYSpacing;
+    cfg.egtChtWidth = L.egtCht.w;
+
+    // 4-cylinder engines use a narrower EGT/CHT column, freeing horizontal
+    // space on the right side for additional HBar rows.
     bool compact = (profile.numCylinders <= 4);
-    cfg.egtChtWidth = compact ? 205 : 310;
-
-    // With the shorter column bar area, we can fit more hBar rows.
-    // 6-cyl: 5 rows (classic JPI 830 layout)
-    // 4-cyl: 7 rows (two extra rows in the freed space)
-    cfg.numRightBarSlots = compact ? 10 : 5;
-
-    // Tighter spacing when we have more rows so they still fit
     if (compact) {
-        cfg.barYSpacing = 28;
+        cfg.egtChtWidth = 205;  // narrower column regardless of orientation
+        cfg.barYSpacing = 28;   // tighter spacing for more rows
         cfg.barH        = 24;
     }
 
+    // Compute how many HBar slots fit in the available vertical space.
+    // Each bar's top edge is at:  barY + (i+1) * barYSpacing
+    // Its bottom edge is at:      barY + (i+1) * barYSpacing + barH
+    // We need that bottom edge ≤ barMaxY, so:
+    //   barY + (n+1) * barYSpacing + barH ≤ barMaxY
+    //   n ≤ (barMaxY - barY - barH) / barYSpacing - 1
+    int maxSlots = (L.barMaxY - cfg.barY - cfg.barH) / cfg.barYSpacing;
+    if (maxSlots > MAX_RIGHT_BAR_SLOTS) maxSlots = MAX_RIGHT_BAR_SLOTS;
+    if (maxSlots < 0) maxSlots = 0;
+    cfg.numRightBarSlots = maxSlots;
+delay(5000);
+   // Serial.printf("maxSlots=%d numSlots=%d\n", maxSlots, cfg.numRightBarSlots);
     // Build a default gauge selection from what the profile supports.
     // Start with the "classic" order, skip anything unavailable, then
     // fill remaining slots from whatever else is available.

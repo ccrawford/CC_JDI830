@@ -5,6 +5,7 @@
 #include <Arduino.h>
 
 // Font includes — only fonts used in setupGauges() and setupRightBars()
+#include "Fonts/SevenSeg30.h"
 #include "Fonts/SevenSeg32.h"
 #include "Fonts/ArialNB12.h"
 #include "Fonts/ArialN11.h"
@@ -33,11 +34,11 @@ void CC_JDI830::applyRangeDef(Gauge& gauge, const GaugeRangeDef& def) {
 void CC_JDI830::setupRightBars() {
     const PlaneProfile& p = *activeProfile;
 
-    int barH = 29;
-    int barW = 80;
-    int barX = 220;
-    int barY = -20;
-    int barYSpacing = 34;
+    int barH        = _displayCfg.barH;
+    int barW        = _displayCfg.barW;
+    int barX        = _displayCfg.barX;
+    int barY        = _displayCfg.barY;
+    int barYSpacing = _displayCfg.barYSpacing;
 
     // for (int i = 0; i < NUM_RIGHT_BAR_SLOTS; i++) {
     for (int i = 0; i < _displayCfg.numRightBarSlots ; i++) {
@@ -68,45 +69,54 @@ void CC_JDI830::setupRightBars() {
 
 void CC_JDI830::setupGauges() {
     const PlaneProfile& p = *activeProfile;
+    const GaugeLayout&  L = *_displayCfg.layout;
+
+    // Pick arc value font based on orientation — landscape arcs are smaller
+    const uint8_t* arcValueFont =
+        (L.screenW > L.screenH) ? SevenSeg30 : SevenSeg32;
 
     // --- RPM Arc Gauge ---
-    _rpmGauge.setPosition(10, 1);
+    _rpmGauge.setPosition(L.rpm.x, L.rpm.y);
     _rpmGauge.setLabel("RPM");
     _rpmGauge.setValuePtr(&curState.rpm);
-    _rpmGauge.setArcGeometry(75, 85, 75, 70);
-    _rpmGauge.setAngles(182, 358);
-    _rpmGauge.setNeedle(55, TFT_WHITE);
-    _rpmGauge.setValueFont(SevenSeg32);
+    _rpmGauge.setArcGeometry(L.rpmArc.cx, L.rpmArc.cy,
+                              L.rpmArc.outerR, L.rpmArc.innerR);
+    _rpmGauge.setAngles(L.rpmArc.startAngle, L.rpmArc.endAngle);
+    _rpmGauge.setNeedle(L.rpmArc.needleLen, TFT_WHITE);
+    _rpmGauge.setValueFont(arcValueFont);
     _rpmGauge.setLabelFont(ArialNB12);
+    _rpmGauge.setLabelY(L.rpmArc.labelY);
     applyRangeDef(_rpmGauge, p.rpm);
-    _rpmGauge.init(205, 90);
+    _rpmGauge.init(L.rpm.w, L.rpm.h);
 
     // --- MAP Arc Gauge ---
     if (p.hasMap) {
-        _mapGauge.setPosition(10, 95);
+        _mapGauge.setPosition(L.map.x, L.map.y);
         _mapGauge.setLabel("MAP");
         _mapGauge.setValuePtr(&curState.map);
-        _mapGauge.setArcGeometry(75, 2, 75, 70);
-        _mapGauge.setInverted(true);
-        _mapGauge.setAngles(178, 2);
-        _mapGauge.setNeedle(55, TFT_WHITE);
+        _mapGauge.setArcGeometry(L.mapArc.cx, L.mapArc.cy,
+                                  L.mapArc.outerR, L.mapArc.innerR);
+        _mapGauge.setInverted(L.mapInverted);
+        _mapGauge.setAngles(L.mapArc.startAngle, L.mapArc.endAngle);
+        _mapGauge.setNeedle(L.mapArc.needleLen, TFT_WHITE);
         _mapGauge.setDecimals(1);
-        _mapGauge.setValueFont(SevenSeg32);
+        _mapGauge.setValueFont(arcValueFont);
         _mapGauge.setLabelFont(ArialNB12);
+        _mapGauge.setLabelY(L.mapArc.labelY);
         applyRangeDef(_mapGauge, p.map);
-        _mapGauge.init(205, 90);
+        _mapGauge.init(L.map.w, L.map.h);
     }
 
     // --- %HP Value Gauge ---
     if (p.hasHp) {
-        _hpPct.setPosition(2, 185);
+        _hpPct.setPosition(L.hpPct.x, L.hpPct.y);
         _hpPct.setLabel("% HP");
         _hpPct.setValuePtr(&curState.hp);
         _hpPct.setValueFont(ArialN16);
         _hpPct.setLabelFont(ArialN11);
         _hpPct.setValueColor(TFT_WHITE);
-        _hpPct.setLayout(35, LABEL_RIGHT);
-        _hpPct.init(90, 20);
+        _hpPct.setLayout(L.hpGapCenter, LABEL_RIGHT);
+        _hpPct.init(L.hpPct.w, L.hpPct.h);
     }
 
     // --- HBar Gauges (right column) — configured from rightBarSelections[] ---
@@ -114,7 +124,7 @@ void CC_JDI830::setupGauges() {
 
     // --- EGT/CHT Column Bars (with optional TIT) ---
     // Layout is computed automatically from sprite size, cylinder count, and TIT count.
-    _egtChtBars.setPosition(5, 205);
+    _egtChtBars.setPosition(L.egtCht.x, L.egtCht.y);
     _egtChtBars.setNumCylinders(p.numCylinders);
     _egtChtBars.setEgtRange(p.egt.min, p.egt.max);
     _egtChtBars.setChtRange(p.cht.min, p.cht.max);
@@ -138,19 +148,21 @@ void CC_JDI830::setupGauges() {
     if (p.hasTit2) {
         _egtChtBars.addTit(&curState.tit2, "T2");
     }
-    _egtChtBars.init((p.numCylinders == 6) ? 310: 205, 165);  // computeLayout() handles everything
+    _egtChtBars.init(_displayCfg.egtChtWidth, L.egtCht.h);
 
     // --- Bottom bar ---
     _numBottomPages = buildBottomPages(_bottomPages, p, curState);
     memset(_excluded, 0, sizeof(_excluded));  // reset all exclusions on profile change / power-up
-    _bottomBar.setPosition(5, 380);
+    _bottomBar.setPosition(L.bottomBar.x, L.bottomBar.y);
     _bottomBar.setMessageFont(ArialNI36);
-    _bottomBar.init(310, 45);
+    _bottomBar.init(L.bottomBar.w, L.bottomBar.h);
     if (_numBottomPages > 0)
         _bottomBar.setPage(_bottomPages[0]);
 
-    _statusBar.setPosition(0,430);
-    _statusBar.init(320, 16);    
+    _statusBar.setPosition(L.statusBar.x, L.statusBar.y);
+    _statusBar.setLabelPositions(L.stepLabelPos, L.lfLabelPos);
+    _statusBar.setVertical(L.statusVertical);
+    _statusBar.init(L.statusBar.w, L.statusBar.h);
 }
 
 
@@ -175,6 +187,7 @@ void CC_JDI830::setProfile(int index) {
     curState.lastCoolingUpdate = 0;          // force cooling rate re-bootstrap
 
     _displayCfg = buildDefaultConfig(*activeProfile);
+    _lcd.setRotation(_displayCfg.layout->rotation);
 
     // If the new layout has fewer slots, erase the ones that are going away
     // for (int i = _displayCfg.numRightBarSlots; i < oldSlots; i++)
@@ -198,12 +211,22 @@ void CC_JDI830::setProfile(int index) {
     for (int i = 0; i < _displayCfg.numRightBarSlots; i++)
         _rightBars[i].forceDirty();
     _statusBar.forceDirty();
-    
+
+    drawStatic();
 }
 
 void CC_JDI830::drawStatic() {
-    _lcd.drawLine(6,93, 163, 93, TFT_LIGHTGRAY);
-    _lcd.drawLine(6,94, 163, 94, TFT_LIGHTGRAY);
+    const GaugeLayout& L = *_displayCfg.layout;
+    for (int i = 0; i < L.numStaticLines; i++) {
+        const StaticLine& sl = L.staticLines[i];
+        bool horizontal = (sl.y0 == sl.y1);
+        _lcd.drawLine(sl.x0, sl.y0, sl.x1, sl.y1, TFT_LIGHTGRAY);
+        // Draw a second line 1px offset for visibility (2px wide)
+        if (horizontal)
+            _lcd.drawLine(sl.x0, sl.y0 + 1, sl.x1, sl.y1 + 1, TFT_LIGHTGRAY);
+        else
+            _lcd.drawLine(sl.x0 + 1, sl.y0, sl.x1 + 1, sl.y1, TFT_LIGHTGRAY);
+    }
 }
 
 CC_JDI830::CC_JDI830(uint8_t sclk, uint8_t mosi, uint8_t dc, uint8_t cs, uint8_t rst, uint8_t bl)
@@ -224,7 +247,8 @@ void CC_JDI830::begin()
     // Serial.printf("sclk: %d mosi: %d dc: %d cs: %d rst: %d bl: %d\n", _pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL);
 
     _lcd.init();
-    _lcd.setRotation(0);  // portrait mode, 320x480
+    // Rotation is set in setProfile() from the active GaugeLayout,
+    // so the first setProfile(0) call below handles it.
     _lcd.fillScreen(TFT_BLACK);
 
     // Load default profile (later: read saved index from NVS here)
@@ -236,9 +260,6 @@ void CC_JDI830::begin()
 
     pinMode(0, INPUT_PULLUP);
     pinMode(14, INPUT_PULLUP);
-
-
-//    drawStatic();
 }
 
 void CC_JDI830::attach()
@@ -290,10 +311,10 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
        if (strchr(setPoint, '|')) {
            char* tok = strtok(setPoint, "|");
            for (int i = 0; i < nCyl && tok != nullptr; i++) {
-                Serial.printf("tok %d:%s\n",i, tok);
+            //    Serial.printf("tok %d:%s\n",i, tok);
                curState.egt[i] = strtof(tok, nullptr);
-               tok = strtok(nullptr, "|");
-               Serial.printf("token %d: %f\n",i, curState.egt[i]);
+         //      tok = strtok(nullptr, "|");
+         //      Serial.printf("token %d: %f\n",i, curState.egt[i]);
             }
         } else {
             float val = strtof(setPoint, nullptr);
@@ -650,9 +671,15 @@ void CC_JDI830::update()
 
     _bottomBar.update();
     _statusBar.update();
+
+    // HP% is drawn last so it paints over any overlapping arc sprites.
+    // In landscape mode the HP% gauge sits between the two arcs, overlapping
+    // their sprite rectangles.  Force it dirty so it always repaints on top.
+    if (_displayCfg.layout->screenW > _displayCfg.layout->screenH)
+        _hpPct.forceDirty();
     _hpPct.update();
 
     // Debug overlay — shows mode, gesture, button state, connection status.
-    drawDebugState(gesture);
+  //  drawDebugState(gesture);
 }
 

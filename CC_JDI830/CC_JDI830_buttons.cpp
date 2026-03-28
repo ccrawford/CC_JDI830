@@ -669,13 +669,14 @@ void CC_JDI830::drawDebugState(ButtonGesture gesture) {
              _buttonInput.isLfDown() ? 1 : 0,
              _connectionLost ? "LOST" : "CONN");
 
-    // Draw directly to LCD (not a sprite) in the bottom 15 rows.
+    // Draw directly to LCD (not a sprite) in the bottom rows.
     // Black fill first to clear previous text, then white text on black.
-    _lcd.fillRect(0, 465, 320, 15, TFT_BLACK);
+    const GaugeLayout& L = *_displayCfg.layout;
+    _lcd.fillRect(0, L.debugY, L.screenW, 15, TFT_BLACK);
     _lcd.setTextColor(TFT_GREEN, TFT_BLACK);
     _lcd.setTextDatum(ML_DATUM);  // middle-left
     _lcd.setTextSize(1);          // built-in font, small
-    _lcd.drawString(buf, 4, 472);
+    _lcd.drawString(buf, 4, L.debugY + 7);
 }
 
 // ---------------------------------------------------------------------------

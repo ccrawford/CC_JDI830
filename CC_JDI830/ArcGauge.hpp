@@ -35,6 +35,12 @@ private:
     const uint8_t *_valueFont;
     const uint8_t *_labelFont;
 
+    // Explicit label y-position within the sprite.  When set to the
+    // sentinel value, drawLabel() falls back to computing it from
+    // _cy/_innerR/_inverted (the original behavior).
+    static constexpr int16_t LABEL_Y_AUTO = -9999;
+    int16_t _labelY = LABEL_Y_AUTO;
+
     // Number of decimal places for value display
     int _decimals;
 
@@ -215,12 +221,16 @@ private:
 
     void drawLabel()
     {
-        // Label below/above the value (e.g. "RPM", "MAP")
+        // Label text (e.g. "RPM", "MAP") — positioned either by explicit
+        // _labelY from the layout, or computed from arc geometry.
         if (_labelFont)
             _sprite.loadFont(_labelFont);
         _sprite.setTextColor(TFT_WHITE);
         _sprite.setTextDatum(TC_DATUM); // top-center
-        _sprite.drawString(_label, _cx, _cy + (_inverted ? _innerR - 30 : -_innerR + 10));
+        int16_t ly = (_labelY != LABEL_Y_AUTO)
+            ? _labelY
+            : _cy + (_inverted ? _innerR - 30 : -_innerR + 10);
+        _sprite.drawString(_label, _cx, ly);
     }
 
 public:
@@ -256,4 +266,5 @@ public:
     void setDecimals(int d) { _decimals = d; }
     void setValueFont(const uint8_t *font) { _valueFont = font; }
     void setLabelFont(const uint8_t *font) { _labelFont = font; }
+    void setLabelY(int16_t y) { _labelY = y; }
 };
