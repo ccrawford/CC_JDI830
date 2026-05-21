@@ -85,7 +85,8 @@ void CC_JDI830::setupGauges() {
     _rpmGauge.setValueFont(arcValueFont);
     _rpmGauge.setLabelFont(ArialNB12);
     _rpmGauge.setLabelY(L.rpmArc.labelY);
-    _rpmGauge.setHPCutoutsEnabled(L.screenW > L.screenH);
+    _rpmGauge.setHPCutout(L.rpmHpCutout.x, L.rpmHpCutout.y,
+                          L.rpmHpCutout.w, L.rpmHpCutout.h);
     applyRangeDef(_rpmGauge, p.rpm);
     _rpmGauge.init(L.rpm.w, L.rpm.h);
 
@@ -102,7 +103,8 @@ void CC_JDI830::setupGauges() {
         _mapGauge.setValueFont(arcValueFont);
         _mapGauge.setLabelFont(ArialNB12);
         _mapGauge.setLabelY(L.mapArc.labelY);
-        _mapGauge.setHPCutoutsEnabled(L.screenW > L.screenH);
+        _mapGauge.setHPCutout(L.mapHpCutout.x, L.mapHpCutout.y,
+                              L.mapHpCutout.w, L.mapHpCutout.h);
         applyRangeDef(_mapGauge, p.map);
         _mapGauge.init(L.map.w, L.map.h);
     }

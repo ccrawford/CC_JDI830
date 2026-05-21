@@ -61,11 +61,11 @@ static const PlaneProfile PROFILE_A2A_COMANCHE = {
 
     // --- Gauge ranges ---
     // min, max, redline, {color ranges: {start, end, color}, number of color ranges}
-    .rpm     = { 0, 2900, 2580,    { {0, 2580, TFT_GREEN}, {2580, 2900, TFT_RED} }, 2 },
+    .rpm     = { 0, 2900, 2575,    { {0, 2575, TFT_GREEN}, {2575, 2900, TFT_RED} }, 2 },
     .map     = { 0, 33, 31,       { {0, 31, TFT_GREEN}, {31, 33, TFT_RED} }, 2 },
-    .oilT    = { 100, 250, 0,      { {0, 120, TFT_RED}, {120, 220, TFT_GREEN}, {220, 250, TFT_RED} }, 3 },
-    .oilP    = { 0, 115, 20,      { {0, 20, TFT_RED}, {20, 120, TFT_GREEN} }, 2 },
-    .bat     = { 11, 18, 0,        { {11, 11.9, TFT_RED}, {12, 16, TFT_GREEN}, {16, 18, TFT_RED} }, 3 },
+    .oilT    = { 60, 260, 0,      { {0, 90, TFT_RED}, {90, 220, TFT_GREEN}, {245, 999, TFT_RED} }, 3 },
+    .oilP    = { 0, 120, 25,      { {0, 25, TFT_RED}, {20, 100, TFT_GREEN}, {100, 999, TFT_RED} }, 3 },
+    .bat     = { 11, 17.5, 0,        { {11, 11.9, TFT_RED}, {12, 16, TFT_GREEN}, {16, 99, TFT_RED} }, 3 },
     .oat     = { -20, 50, 0,       { {-20, 50, TFT_GREEN} }, 1 },
     .egt     = { 850, 1700, 1650,  { {0, 1650, TFT_WHITE}, {1650, 2600, TFT_RED} }, 2 },
     .cht     = { 200, 600, 380,    { {0, 380, TFT_WHITE}, {380, 1000, TFT_RED} }, 2 },
