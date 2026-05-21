@@ -113,12 +113,12 @@ static constexpr GaugeLayout LAYOUT_PORTRAIT = {
     .mapArc      = { 75,   2,   75,   70,   178.0f,      2.0f,      42 },
     .mapInverted = true,
 
-    .hpPct       = {  2, 185,  90,  20 },
+    .hpPct       = {  2, 175,  80, 20 },
     .hpGapCenter = 35,
 
     .egtCht = { 5, 205, 310, 165 },
 
-    .barX = 220, .barY = -30, .barMaxY = 380, .barW = 80, .barH = 35, .barYSpacing = 34,
+    .barX = 220, .barY = -30, .barMaxY = 205, .barW = 80, .barH = 35, .barYSpacing = 33,
 
     .bottomBar = { 5, 380, 310, 45 },
 

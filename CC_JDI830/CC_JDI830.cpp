@@ -85,6 +85,7 @@ void CC_JDI830::setupGauges() {
     _rpmGauge.setValueFont(arcValueFont);
     _rpmGauge.setLabelFont(ArialNB12);
     _rpmGauge.setLabelY(L.rpmArc.labelY);
+    _rpmGauge.setHPCutoutsEnabled(L.screenW > L.screenH);
     applyRangeDef(_rpmGauge, p.rpm);
     _rpmGauge.init(L.rpm.w, L.rpm.h);
 
@@ -101,6 +102,7 @@ void CC_JDI830::setupGauges() {
         _mapGauge.setValueFont(arcValueFont);
         _mapGauge.setLabelFont(ArialNB12);
         _mapGauge.setLabelY(L.mapArc.labelY);
+        _mapGauge.setHPCutoutsEnabled(L.screenW > L.screenH);
         applyRangeDef(_mapGauge, p.map);
         _mapGauge.init(L.map.w, L.map.h);
     }
@@ -174,29 +176,43 @@ void CC_JDI830::setProfile(int index) {
     if (index < 0 || index >= NUM_PROFILES) return;
     if (index == _profileIndex) return;       // no-op if unchanged
 
-    _lcd.fillScreen(TFT_BLACK);
-    // Erase right-bar gauges that may not exist in the new layout.
-    // Must happen before we rebuild _displayCfg, while the old slot count
-    // is still valid.
-    int oldSlots = _displayCfg.numRightBarSlots;
-
     _profileIndex = index;
     activeProfile = ALL_PROFILES[index];
     curState.lastCoolingUpdate = 0;          // force cooling rate re-bootstrap
 
-    _displayCfg = buildDefaultConfig(*activeProfile);
-    _lcd.setRotation(_displayCfg.layout->rotation);
-
-    // If the new layout has fewer slots, erase the ones that are going away
-    // for (int i = _displayCfg.numRightBarSlots; i < oldSlots; i++)
-    //     _rightBars[i].erase();
-
-    setupGauges();
+    rebuildLayout();
 
     // Build the alarm table for this profile — pointers into curState
     // and the new profile are captured so scan() can check them each frame.
     _alarmMgr.buildAlarms(*activeProfile, curState);
     _bottomBarMode = BottomBarMode::ALL_DATA;
+}
+
+// ---------------------------------------------------------------------------
+// setLayout — switch screen orientation at runtime.
+// No-op if the requested mode is already active.  Requires an active profile
+// (rebuildLayout() dereferences activeProfile via buildDefaultConfig()).
+// ---------------------------------------------------------------------------
+void CC_JDI830::setLayout(LayoutMode mode) {
+    if (mode == _layoutMode) return;
+    if (!activeProfile) return;   // begin() hasn't run yet — _layoutMode set, will take effect at first setProfile()
+    _layoutMode = mode;
+    rebuildLayout();
+}
+
+// ---------------------------------------------------------------------------
+// rebuildLayout — clear the screen, rebuild the DisplayConfig for the current
+// profile + layout mode, re-init all gauge sprites with new dimensions, and
+// force a full redraw.  Shared by setProfile() and setLayout() since both
+// invalidate every sprite on screen.
+// ---------------------------------------------------------------------------
+void CC_JDI830::rebuildLayout() {
+    _lcd.fillScreen(TFT_BLACK);
+
+    _displayCfg = buildDefaultConfig(*activeProfile, _layoutMode);
+    _lcd.setRotation(_displayCfg.layout->rotation);
+
+    setupGauges();
 
     // setupGauges() reconfigures ranges/colors/labels but the float
     // values haven't changed, so the base Gauge::update() won't see
@@ -423,9 +439,14 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
         curState.ff = strtof(setPoint, nullptr);
         break;
 
-    case 16:
-        curState.fuelCapacity = strtof(setPoint, nullptr);
+    case 16: {
+        float newCap = strtof(setPoint, nullptr);
+        if (newCap != curState.fuelCapacity) {
+            curState.fuelCapacity = newCap;
+            setupRightBars();  // FUEL_REM bar range tracks sim-reported capacity
+        }
         break;
+    }
 
     case 17:
         curState.hp = strtof(setPoint, nullptr);
@@ -457,9 +478,17 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
         break;
     }
 
-    case 24: 
+    case 24:
         curState.used = strtof(setPoint, nullptr);
         break;
+
+    case 25: {
+        // Screen layout: 0 = portrait, 1 = landscape
+        int val = atoi(setPoint);
+        if (val == 0 || val == 1)
+            setLayout(static_cast<LayoutMode>(val));
+        break;
+    }
 
     default:
         break;

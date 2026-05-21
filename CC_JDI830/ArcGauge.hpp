@@ -40,6 +40,10 @@ private:
     static constexpr int16_t LABEL_Y_AUTO = -9999;
     int16_t _labelY = LABEL_Y_AUTO;
 
+    // When true, drawHPCutouts() carves transparent corners for the %HP overlay.
+    // Only needed in landscape where %HP floats between the two arc sprites.
+    bool _hpCutoutsEnabled = false;
+
     // Number of decimal places for value display
     int _decimals;
 
@@ -57,10 +61,10 @@ protected:
 
 private:
 
-    // The horsepower gets drawn on top of the gap between gauges. To avoid soem flickering, we'll 
-    // draw a transparent cutout for it in our sprite. This is a total hack. I mean, we should at 
-    // least pass in the areas to block out.
+    // Carves transparent corners so the %HP sprite can overlap without flickering.
+    // Only applies in landscape where %HP floats at the top between the two arcs.
     void drawHPCutouts() {
+        if (!_hpCutoutsEnabled) return;
         _sprite.fillRect(0,0,40,25, TFT_TRANSPARENT);
         _sprite.fillRect(_w - 40, 0, _w, 25, TFT_TRANSPARENT);
     }
@@ -276,4 +280,5 @@ public:
     void setValueFont(const uint8_t *font) { _valueFont = font; }
     void setLabelFont(const uint8_t *font) { _labelFont = font; }
     void setLabelY(int16_t y) { _labelY = y; }
+    void setHPCutoutsEnabled(bool enabled) { _hpCutoutsEnabled = enabled; }
 };

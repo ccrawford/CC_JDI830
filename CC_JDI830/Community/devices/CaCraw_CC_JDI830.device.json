@@ -143,6 +143,11 @@
         "id": 23,
         "label": "Scan Switch Position",
         "description": "3-position select switch: 0=EGT (temps only), 1=ALL, 2=FF (fuel only)"
+      },
+      {
+        "id": 25,
+        "label": "Screen Layout",
+        "description": "Screen orientation: 0=Portrait (320x480), 1=Landscape (480x320)"
       }
 
     ]
