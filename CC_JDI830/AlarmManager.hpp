@@ -174,8 +174,8 @@ public:
         add("OIL",    &state.oilT,     &prof.oilT,      &prof.hasOilT,     AlarmCheck::IN_RED_LOW,    0);
         add("CLD",    &state.coldRate, &prof.coldRate,   &prof.hasColdRate, AlarmCheck::IN_RED,        0);
         add("DIF",    &state.dif,      &prof.dif,       &prof.hasDif,      AlarmCheck::IN_RED,        0);
-        add("BAT",    &state.bat,      &prof.bat,       &prof.hasBat,      AlarmCheck::IN_RED_HIGH,   1);
-        add("BAT",    &state.bat,      &prof.bat,       &prof.hasBat,      AlarmCheck::IN_RED_LOW,    1);
+        add("VOLTS",    &state.bat,      &prof.bat,       &prof.hasBat,      AlarmCheck::IN_RED_HIGH,   1);
+        add("VOLTS",    &state.bat,      &prof.bat,       &prof.hasBat,      AlarmCheck::IN_RED_LOW,    1);
         add("MAP",    &state.map,      &prof.map,       &prof.hasMap,      AlarmCheck::IN_RED,        1);
         add("O-P",    &state.oilP,     &prof.oilP,      &prof.hasOilP,     AlarmCheck::IN_RED,        0);
         add("LO REM", &state.fuelRem, &prof.fuelRem,    &prof.hasFuelRem,  AlarmCheck::IN_RED_LOW,    1);

@@ -105,6 +105,11 @@
         "description": "Total Fuel Capacity in Gallons"
       },
       {
+        "id": 24,
+        "label": "Fuel Used",
+        "description": "Total Fuel Used from Totalizer"
+      },
+      {
         "id": 22,
         "label": "MPG",
         "description": "GPS Ground Speed in Knots / Fuel Flow in Gallons per Hour"

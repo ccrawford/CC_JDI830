@@ -20,6 +20,7 @@ private:
     bool           getStringFromMem(uint16_t addreeprom, char *buffer, bool configFromFlash);
     bool           _initialized = false;
     CC_JDI830 *_mydevice;
-    uint8_t        _pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL;
+    uint8_t        _pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL; // SPI (RP2350)
+    uint8_t        _pinD0, _pinD1, _pinD2, _pinD3;                      // QSPI extra (ESP32-S3)
     uint8_t        _customType = 0;
 };

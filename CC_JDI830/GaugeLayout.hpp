@@ -208,7 +208,7 @@ static constexpr GaugeLayout buildLandscape() {
     constexpr int16_t egtChtW  = contentW;
 
     // Bottom bar: below EGT/CHT, same width as content area
-    constexpr int16_t bbY      = egtChtY + egtChtH;
+    constexpr int16_t bbY      = egtChtY + egtChtH + 15;  // Should probably center this in the available space.
     constexpr int16_t bbW      = contentW;
 
     // %HP: centered between the two arc labels

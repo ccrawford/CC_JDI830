@@ -227,37 +227,54 @@ void CC_JDI830::drawStatic() {
     }
 }
 
+#if defined(ESP_PLATFORM)
+CC_JDI830::CC_JDI830(uint8_t sclk, uint8_t d0, uint8_t d1, uint8_t d2, uint8_t d3,
+                     uint8_t cs, uint8_t rst, uint8_t bl)
+{
+    _pinSCLK = sclk;
+    _pinD0   = d0;
+    _pinD1   = d1;
+    _pinD2   = d2;
+    _pinD3   = d3;
+    _pinCS   = cs;
+    _pinRST  = rst;
+    _pinBL   = bl;
+}
+#else
 CC_JDI830::CC_JDI830(uint8_t sclk, uint8_t mosi, uint8_t dc, uint8_t cs, uint8_t rst, uint8_t bl)
 {
     _pinSCLK = sclk;
     _pinMOSI = mosi;
-    _pinDC = dc;
-    _pinCS = cs;
-    _pinRST = rst;
-    _pinBL = bl;
+    _pinDC   = dc;
+    _pinCS   = cs;
+    _pinRST  = rst;
+    _pinBL   = bl;
 }
+#endif
 
 void CC_JDI830::begin()
 {
-    // Apply pin config from MobiFlight before initializing the display hardware
+#if !defined(ESP_PLATFORM)
     _lcd.configurePins(_pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL);
-
-    // Serial.printf("sclk: %d mosi: %d dc: %d cs: %d rst: %d bl: %d\n", _pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL);
+#endif
 
     _lcd.init();
-    // Rotation is set in setProfile() from the active GaugeLayout,
-    // so the first setProfile(0) call below handles it.
-    _lcd.fillScreen(TFT_BLACK);
+    Serial.printf("begin: w=%d h=%d\n", _lcd.width(), _lcd.height());
 
-    // Load default profile (later: read saved index from NVS here)
+#if !defined(ESP_PLATFORM)
+    _lcd.setBrightness(255);
+#endif
+
+    Serial.println("begin: fillScreen BLACK");
+    _lcd.fillScreen(TFT_BLACK);
+    Serial.println("begin: fillScreen done");
+
     setProfile(0);
 
-    // Device starts in FUEL_SETUP mode — record start time for the
-    // 1-second "FUEL" splash, then the wizard takes over.
     _fuelSetupStartTime = millis();
 
-    pinMode(0, INPUT_PULLUP);
-    pinMode(14, INPUT_PULLUP);
+    pinMode(STEP_PIN, INPUT_PULLUP);
+    pinMode(LF_PIN, INPUT_PULLUP);
 }
 
 void CC_JDI830::attach()
@@ -440,6 +457,10 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
         break;
     }
 
+    case 24: 
+        curState.used = strtof(setPoint, nullptr);
+        break;
+
     default:
         break;
     }
@@ -559,14 +580,14 @@ void CC_JDI830::update()
     }
 
     // Change: Let's try managing buttons locally. 
-    bool stepBtn = !digitalRead(0);
+    bool stepBtn = !digitalRead(STEP_PIN);
     if(stepBtn != _stepButtonLastState) 
     {
         stepButtonStateChange(stepBtn);
         _stepButtonLastState = stepBtn;
     }
 
-    bool lfBtn = !digitalRead(14);
+    bool lfBtn = !digitalRead(LF_PIN);
     if(lfBtn != _lfButtonLastState) {
         lfButtonStateChange(lfBtn);
         _lfButtonLastState = lfBtn;
@@ -715,6 +736,11 @@ void CC_JDI830::update()
     _hpPct.update();
 
     // Debug overlay — shows mode, gesture, button state, connection status.
-    drawDebugState(gesture);
+    // drawDebugState(gesture);
+
+#if defined(ESP_PLATFORM)
+    // Flush the Arduino_Canvas framebuffer to the physical display.
+    _lcd.flush();
+#endif
 }
 

@@ -106,7 +106,7 @@ struct EngineState {
         cdtLessIat = cdt - iat;
 
         // --- Fuel calculations ---
-        used = fuelCapacity - fuelRem;
+        // used = fuelCapacity - fuelRem;
 
         if (ff > 0.01f) {
             endurance = (fuelRem / ff) * 60.0f;   // minutes

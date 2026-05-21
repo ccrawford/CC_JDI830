@@ -1,0 +1,120 @@
+{
+  "$schema": "./mfboard.schema.json",
+  "AvrDudeSettings": {
+    "Device": "ESP32-S3DevKitC1",
+    "BaudRate": "115200",
+    "Programmer": "arduino",
+    "Timeout": 15000
+  },
+  "Connection": {
+    "ConnectionDelay": 1250,
+    "DelayAfterFirmwareUpdate": 1250,
+    "DtrEnable": false,
+    "EEPROMSize": 1496,
+    "ExtraConnectionRetry": true,
+    "ForceResetOnFirmwareUpdate": true,
+    "MessageSize": 90
+  },
+  "HardwareIds": [
+    "^VID_303A&PID_1001",
+    "^VID_303A&PID_1001&MI_00",
+    "^VID_1A86&PID_7523",
+    "^VID_1A86&PID_7523&MI_00"
+  ],
+  "Info": {
+    "CanInstallFirmware": false,
+    "CanResetBoard": false,
+    "DelayAfterFirmwareUpdate": 0,
+    "FirmwareBaseName": "cacraw_cc_jdi830_esp32s3",
+    "FirmwareExtension": "bin",
+    "FriendlyName": "CC JDI830 ESP32",
+    "LatestFirmwareVersion": "3.0.0",
+    "MobiFlightType": "CC_JDI830 S3",
+    "ResetFirmwareFile": "reset.esp32_s3_devkit_merged.bin",
+    "CustomDeviceTypes": [
+      "CC_JDI830"
+    ],
+    "Community": {
+      "Project": "CC JDI830",
+      "Website": "https://github.com/ccrawford/CC_JDI830",
+      "Docs": "https://github.com/ccrawford/CC_JDI830/blob/main/README.md",
+      "Support": "https://github.com/ccrawford/CC_JDI830/issues"
+    }
+  },
+  "ModuleLimits": {
+    "MaxAnalogInputs": 3,
+    "MaxInputShifters": 0,
+    "MaxButtons": 7,
+    "MaxEncoders": 3,
+    "MaxLcdI2C": 0,
+    "MaxLedSegments": 0,
+    "MaxOutputs": 0,
+    "MaxServos": 0,
+    "MaxShifters": 0,
+    "MaxSteppers": 0,
+    "MaxInputMultiplexer": 0,
+    "MaxCustomDevices": 1
+  },
+  "Pins": [
+    {
+      "isAnalog": true,
+      "isI2C": false,
+      "isPWM": true,
+      "Pin": 1
+    },
+    {
+      "isAnalog": true,
+      "isI2C": false,
+      "isPWM": true,
+      "Pin": 2
+    },
+    {
+      "isAnalog": false,
+      "isI2C": false,
+      "isPWM": true,
+      "Pin": 21
+    },
+    {
+      "isAnalog": false,
+      "isI2C": false,
+      "isPWM": true,
+      "Pin": 39
+    },
+    {
+      "isAnalog": false,
+      "isI2C": false,
+      "isPWM": true,
+      "Pin": 41
+    },
+    {
+      "isAnalog": false,
+      "isI2C": false,
+      "isPWM": true,
+      "Pin": 40
+    },
+    {
+      "isAnalog": false,
+      "isI2C": false,
+      "isPWM": true,
+      "Pin": 42
+    },
+    {
+      "isAnalog": false,
+      "isI2C": false,
+      "isPWM": true,
+      "Pin": 45
+    },
+    {
+      "isAnalog": false,
+      "isI2C": false,
+      "isPWM": true,
+      "Pin": 47
+    },
+    {
+      "isAnalog": false,
+      "isI2C": false,
+      "isPWM": true,
+      "Pin": 48
+    }
+  ]
+}

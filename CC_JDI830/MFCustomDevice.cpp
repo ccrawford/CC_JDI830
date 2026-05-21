@@ -90,7 +90,6 @@ void MFCustomDevice::attach(uint16_t adrPin, uint16_t adrType, uint16_t adrConfi
 
     char   *params, *p = NULL;
     char    parameter[MEMLEN_STRING_BUFFER];
-    uint8_t _pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL;
 
     /* **********************************************************************************
         Read the Type from the EEPROM or Flash, copy it into a buffer and evaluate it
@@ -133,12 +132,25 @@ void MFCustomDevice::attach(uint16_t adrPin, uint16_t adrType, uint16_t adrConfi
             cmdMessenger.sendCmd(kStatus, "ERROR: pin config string is empty, aborting attach");
             return;
         }
+#if defined(ESP_PLATFORM)
+        // ESP32-S3 QSPI: 8 pins — SCLK|D0|D1|D2|D3|CS|RST|BL
+        _pinSCLK = atoi(params);
+        _pinD0   = nextTokenInt(&p, "D0");
+        _pinD1   = nextTokenInt(&p, "D1");
+        _pinD2   = nextTokenInt(&p, "D2");
+        _pinD3   = nextTokenInt(&p, "D3");
+        _pinCS   = nextTokenInt(&p, "CS");
+        _pinRST  = nextTokenInt(&p, "RST");
+        _pinBL   = nextTokenInt(&p, "BL");
+#else
+        // RP2350 SPI: 6 pins — SCLK|MOSI|DC|CS|RST|BL
         _pinSCLK  = atoi(params);
         _pinMOSI  = nextTokenInt(&p, "MOSI");
         _pinDC    = nextTokenInt(&p, "DC");
         _pinCS    = nextTokenInt(&p, "CS");
         _pinRST   = nextTokenInt(&p, "RST");
         _pinBL    = nextTokenInt(&p, "BL");
+#endif
     
         /* **********************************************************************************
             Read the configuration from the EEPROM or Flash, copy it into a buffer.
@@ -158,7 +170,11 @@ void MFCustomDevice::attach(uint16_t adrPin, uint16_t adrType, uint16_t adrConfi
         ********************************************************************************** */
         // In most cases you need only one of the following functions
         // depending on if the constuctor takes the variables or a separate function is required
+#if defined(ESP_PLATFORM)
+        _mydevice = new (allocateMemory(sizeof(CC_JDI830), alignof(CC_JDI830))) CC_JDI830(_pinSCLK, _pinD0, _pinD1, _pinD2, _pinD3, _pinCS, _pinRST, _pinBL);
+#else
         _mydevice = new (allocateMemory(sizeof(CC_JDI830), alignof(CC_JDI830))) CC_JDI830(_pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL);
+#endif
         _mydevice->attach();
         // if your custom device does not need a separate begin() function, delete the following
         // or this function could be called from the custom constructor or attach() function

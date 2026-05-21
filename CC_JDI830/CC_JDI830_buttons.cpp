@@ -270,7 +270,7 @@ void CC_JDI830::handleGesture(ButtonGesture gesture) {
                     // STEP = accept this value, LF = next choice.
                     if (gesture == ButtonGesture::STEP_TAP) {
                         curState.fuelRem = activeProfile->fuelMain;
-                        curState.used = 0;
+                        // curState.used = 0;
                         _displayMode = DisplayMode::MANUAL;
                         _autoScan = false;
                         _manualStartTime = millis();
@@ -292,7 +292,7 @@ void CC_JDI830::handleGesture(ButtonGesture gesture) {
                     // STEP = accept, LF = next choice (FILL +).
                     if (gesture == ButtonGesture::STEP_TAP) {
                         curState.fuelRem = activeProfile->fuelMain + activeProfile->fuelAux;
-                        curState.used = 0;
+                        // curState.used = 0;
                         _displayMode = DisplayMode::MANUAL;
                         _autoScan = false;
                         _manualStartTime = millis();
@@ -324,7 +324,7 @@ void CC_JDI830::handleGesture(ButtonGesture gesture) {
                     // LF hold = auto-repeat add handled in update() (not gestures).
                     if (gesture == ButtonGesture::STEP_TAP) {
                         curState.fuelRem = _fuelAdjustValue;
-                        curState.used = 0;
+                        // curState.used = 0;
                         _displayMode = DisplayMode::MANUAL;
                         _autoScan = false;
                         _manualStartTime = millis();
