@@ -267,6 +267,24 @@ private:
     static constexpr bool DEBUG_OVERLAY = true;
     void drawDebugState(ButtonGesture gesture);
 
+    // EGT-switch cycle — when the scan switch is in EGT, the bottom bar
+    // walks each cylinder's EGT/CHT, then TIT(s), instead of rotating the
+    // normal TEMP-group pages.  _egtCycleIdx names the current slot:
+    //   0..numCylinders-1            → cylinder N (DUAL EGT/CHT)
+    //   numCylinders..(+numTit-1)    → TIT1 / TIT2 (SINGLE)
+    // _egtCyclePage is the synthesized BottomPage we mutate each tick and
+    // push to the bottom bar.  Label storage lives in this object so the
+    // const char* pointers inside the page stay valid across frames.
+    int        _egtCycleIdx  = 0;
+    BottomPage _egtCyclePage = {};
+    char       _egtCycleLabelL[8] = {};   // "EGT 1" / "TIT" etc.
+    char       _egtCycleLabelR[8] = {};   // "CHT 1" (unused for TIT slots)
+    bool       _egtCycleActive = false;   // true while _scanSwitch == EGT
+
+    void enterEgtCycle();          // called on switch entering EGT position
+    void advanceEgtCycle(int dir = +1);  // step cycle (+1 forward, -1 back)
+    void refreshEgtCyclePage();    // rebuild _egtCyclePage from current idx
+
     // Private helpers
     void advanceBottomPage();
     void advanceBottomPageAuto();  // advance skipping excluded pages (AUTO mode)

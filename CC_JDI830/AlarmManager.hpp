@@ -85,12 +85,53 @@ inline bool isInRedLow(float value, const GaugeRangeDef& range) {
     return false;
 }
 
-// Hysteresis margin as a fraction of the green-band span.  Once an alarm
-// has tripped, the value must retreat *past* the red/green boundary by
-// this much before the alarm clears — kills boundary flicker without
-// noticeably delaying real alarm clearance.  3% of green span ≈ a few
-// tenths of a volt for the BAT range or a few degrees for OIL temp.
+// Hysteresis margin as a fraction of the *trip boundary* (the red/green
+// edge), not the green-band span.  Once an alarm has tripped, the value
+// must retreat past the boundary by this much before the alarm clears —
+// kills boundary flicker without noticeably delaying real alarm clearance.
+//
+// Earlier this was scaled to the green-band span, but several profiles use
+// a sentinel max (e.g. endurance green = 20..9999 min).  That made the
+// margin ~300 min wide and pinned the alarm forever once tripped at 0 min.
+// Scaling to the boundary instead is stable regardless of the green range:
+// 3% of 20 min = 0.6 min, 3% of 11.5 V ≈ 0.35 V, 3% of 200 °F = 6 °F.
+//
+// Helper: find the red/green boundary on the LOW side (largest RED.max
+// below greenMax) or HIGH side (smallest RED.min at-or-above greenMax).
+// Returns 0 if no such band exists.
 static constexpr float kAlarmHysteresisFraction = 0.03f;
+
+inline float redLowBoundary(const GaugeRangeDef& range) {
+    float greenMax = greenUpperBound(range);
+    float best = 0;
+    bool  found = false;
+    for (uint8_t i = 0; i < range.colorCount; i++) {
+        if (range.colors[i].color == TFT_RED &&
+            range.colors[i].max < greenMax) {
+            if (!found || range.colors[i].max > best) {
+                best = range.colors[i].max;
+                found = true;
+            }
+        }
+    }
+    return found ? best : 0;
+}
+
+inline float redHighBoundary(const GaugeRangeDef& range) {
+    float greenMax = greenUpperBound(range);
+    float best = 0;
+    bool  found = false;
+    for (uint8_t i = 0; i < range.colorCount; i++) {
+        if (range.colors[i].color == TFT_RED &&
+            range.colors[i].min >= greenMax) {
+            if (!found || range.colors[i].min < best) {
+                best = range.colors[i].min;
+                found = true;
+            }
+        }
+    }
+    return found ? best : 0;
+}
 
 // --- Hysteresis-aware versions of the IN_RED* checks ---
 // `tripped` is the alarm's current latch state.  Returns the new latch
@@ -102,29 +143,32 @@ static constexpr float kAlarmHysteresisFraction = 0.03f;
 // boundary by kAlarmHysteresisFraction × green-band-span.
 inline bool checkInRedHigh(float value, const GaugeRangeDef& range, bool tripped) {
     if (!tripped) return isInRedHigh(value, range);
-    // Already tripped on the high side — clear only when we drop below
-    // the green/red boundary minus the hysteresis margin.
-    float greenMax = greenUpperBound(range);
-    float margin = (greenMax - greenLowerBound(range)) * kAlarmHysteresisFraction;
-    return value >= (greenMax - margin);
+    // Already tripped on the high side — clear only when value drops below
+    // the high red boundary by the hysteresis margin.  Margin is a fraction
+    // of the boundary itself, so it doesn't depend on the green span.
+    float boundary = redHighBoundary(range);
+    if (boundary <= 0) return false;
+    float margin = boundary * kAlarmHysteresisFraction;
+    return value >= (boundary - margin);
 }
 
 inline bool checkInRedLow(float value, const GaugeRangeDef& range, bool tripped) {
     if (!tripped) return isInRedLow(value, range);
-    float greenMin = greenLowerBound(range);
-    float margin = (greenUpperBound(range) - greenMin) * kAlarmHysteresisFraction;
-    return value <= (greenMin + margin);
+    float boundary = redLowBoundary(range);
+    if (boundary <= 0) return false;
+    float margin = boundary * kAlarmHysteresisFraction;
+    return value <= (boundary + margin);
 }
 
 // IN_RED can fire from either side; once tripped, stay on until we're
-// firmly back inside green (margin from BOTH boundaries).
+// past whichever boundary we crossed (margin scaled to that boundary).
 inline bool checkInRed(float value, const GaugeRangeDef& range, bool tripped) {
     if (!tripped) return isInRed(value, range);
-    float greenMin = greenLowerBound(range);
-    float greenMax = greenUpperBound(range);
-    float margin = (greenMax - greenMin) * kAlarmHysteresisFraction;
-    // Cleared only when value sits inside green with margin on each side
-    return !(value > greenMin + margin && value < greenMax - margin);
+    float low  = redLowBoundary(range);
+    float high = redHighBoundary(range);
+    bool stillLow  = low  > 0 && value <= low  + low  * kAlarmHysteresisFraction;
+    bool stillHigh = high > 0 && value >= high - high * kAlarmHysteresisFraction;
+    return stillLow || stillHigh;
 }
 
 // ABOVE_REDLINE — 1% margin under redline before clearing.  Redline values

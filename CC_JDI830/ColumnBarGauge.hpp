@@ -407,7 +407,10 @@ private:
             if (drawBox)
             {
                 int16_t th = _sprite.fontHeight();
-                int16_t bx = cx - th / 2;
+                // Box is th+2 wide; center it on cx (the text's center line)
+                // by subtracting half of (th+2) from cx, then nudge 2px left
+                // to compensate for the digit glyphs' optical right-lean.
+                int16_t bx = cx - (th + 2) / 2 - 1;
                 int16_t by = _chartBottom + 2;
                 _sprite.drawRect(bx, by, th + 2, th + 2, TFT_WHITE);
                 _sprite.setTextColor(TFT_WHITE);

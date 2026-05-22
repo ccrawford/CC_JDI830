@@ -384,7 +384,8 @@ void CC_JDI830::handleGesture(ButtonGesture gesture) {
             switch (gesture) {
                 case ButtonGesture::STEP_TAP:
                     // Advance to next parameter in the sequence.
-                    advanceBottomPage();
+                    if (_egtCycleActive) advanceEgtCycle(+1);
+                    else                 advanceBottomPage();
                     _manualStartTime = millis();  // reset 2-min auto-switch timer
                     break;
 
@@ -393,7 +394,10 @@ void CC_JDI830::handleGesture(ButtonGesture gesture) {
                     // For now, go back one page.  A "rapid repeat" could be
                     // implemented later with a timer while the button is held.
                     _manualStartTime = millis();  // reset 2-min auto-switch timer
-                    if (_numBottomPages > 0) {
+                    if (_egtCycleActive) {
+                        advanceEgtCycle(-1);
+                        _lastPageChange = millis();
+                    } else if (_numBottomPages > 0) {
                         _currentBottomPage = (_currentBottomPage - 1 + _numBottomPages)
                                              % _numBottomPages;
                         showCurrentPage();

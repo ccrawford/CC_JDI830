@@ -61,7 +61,7 @@ static const PlaneProfile PROFILE_A2A_COMANCHE = {
 
     // --- Gauge ranges ---
     // min, max, redline, {color ranges: {start, end, color}, number of color ranges}
-    .rpm     = { 0, 2900, 2575,    { {0, 2575, TFT_GREEN}, {2575, 2900, TFT_RED} }, 2 },
+    .rpm     = { 0, 2900, 2600,    { {0, 2599, TFT_GREEN}, {2600, 2900, TFT_RED} }, 2 },
     .map     = { 0, 33, 31,       { {0, 31, TFT_GREEN}, {31, 33, TFT_RED} }, 2 },
     .oilT    = { 60, 260, 0,      { {0, 90, TFT_RED}, {90, 245, TFT_GREEN}, {245, 999, TFT_RED} }, 3 },
     .oilP    = { 0, 120, 25,      { {0, 25, TFT_RED}, {20, 100, TFT_GREEN}, {100, 999, TFT_RED} }, 3 },

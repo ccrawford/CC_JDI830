@@ -88,39 +88,58 @@ struct SmoothingSnap {
 struct EngineState {
     static constexpr int MAX_CYLINDERS = 6;
 
-    // ---- Smoothed (display) values -------------------------------------
-    // These are what gauges, alarms, peak detection, lean-find, and the
-    // bottom bar all read.  Updated once per frame in updateCalculated()
-    // by EMA-blending the matching *Raw value.  Default 0 so the gauges
-    // ramp up from rest on power-on (looks like a real instrument booting).
-    float egt[MAX_CYLINDERS] = {0};   // Engine gas temp per cylinder (smoothed)
-    float cht[MAX_CYLINDERS] = {0};   // Cylinder head temp per cylinder (smoothed)
-    float tit1   = 0;     // Turbine Inlet Temp #1 (smoothed)
-    float tit2   = 0;     // Turbine Inlet Temp #2 (smoothed)
-    float oilT   = 0;     // Oil Temp (smoothed)
-    float oilP   = 0;     // Oil Pressure (smoothed)
+    // ---- Display values (refreshed at ~4 Hz) ----------------------------
+    // These are the public fields that gauges, alarms, peak detection,
+    // lean-find, and the bottom bar all read.  They're snapshots of the
+    // *Smoothed accumulators below, copied every DISPLAY_REFRESH_MS to
+    // match the real EDM830's ~4 Hz update cadence.  Holding gauges still
+    // between refreshes makes them feel like a real instrument instead
+    // of jittering with every frame.
+    float egt[MAX_CYLINDERS] = {0};   // Engine gas temp per cylinder
+    float cht[MAX_CYLINDERS] = {0};   // Cylinder head temp per cylinder
+    float tit1   = 0;     // Turbine Inlet Temp #1
+    float tit2   = 0;     // Turbine Inlet Temp #2
+    float oilT   = 0;     // Oil Temp
+    float oilP   = 0;     // Oil Pressure
     bool  isCold = false; // CHT cooling rate triggered (CALCULATED)
     float coldRate = 0.0; // deg/min cooling (CALCULATED)
-    float bat    = 0;     // Battery Volts (smoothed)
-    float oat    = 0;     // Outside Air Temp (smoothed)
+    float bat    = 0;     // Battery Volts
+    float oat    = 0;     // Outside Air Temp
     float dif    = 0;     // Hottest minus coldest EGT (CALCULATED)
-    float crb    = 0;     // Carburator Air Temp (smoothed)
-    float cdt    = 0;     // Compressor Discharge Temp (smoothed)
-    float iat    = 0;     // Intercooler Air Temp (smoothed)
+    float crb    = 0;     // Carburator Air Temp
+    float cdt    = 0;     // Compressor Discharge Temp
+    float iat    = 0;     // Intercooler Air Temp
     float cdtLessIat = 0; // Intercooler cooling (CALCULATED)
-    float rpm    = 0;     // Engine RPM (smoothed, rounded to nearest 10 for display)
-    float rpmSmoothedExact = 0;  // un-rounded EMA accumulator — kept separate so
-                                 // the round-to-10 doesn't quantize the smoothing
-                                 // back into itself and freeze the gauge.
-    float map    = 0;     // Engine Manifold Pressure inHg (smoothed)
-    float ff     = 0;     // Fuel Flow GPH (smoothed)
+    float rpm    = 0;     // Engine RPM (rounded to nearest 10 for display)
+    float map    = 0;     // Engine Manifold Pressure inHg
+    float ff     = 0;     // Fuel Flow GPH
+
+    // ---- EMA accumulators (updated every frame) -------------------------
+    // The smoothing runs at full frame rate (~100 Hz) on these so the
+    // EMA sees every MobiFlight sample.  Display fields above are
+    // refreshed from these on the 4 Hz tick.  Keeping the EMA at full
+    // rate gives much better noise rejection than running it at 4 Hz:
+    // each MobiFlight delta contributes to the average.
+    float egtSmoothed[MAX_CYLINDERS] = {0};
+    float chtSmoothed[MAX_CYLINDERS] = {0};
+    float tit1Smoothed = 0;
+    float tit2Smoothed = 0;
+    float oilTSmoothed = 0;
+    float oilPSmoothed = 0;
+    float batSmoothed  = 0;
+    float oatSmoothed  = 0;
+    float crbSmoothed  = 0;
+    float cdtSmoothed  = 0;
+    float iatSmoothed  = 0;
+    float rpmSmoothed  = 0;   // un-rounded; rpm = round(rpmSmoothed, 10) at refresh
+    float mapSmoothed  = 0;
+    float ffSmoothed   = 0;
 
     // ---- Raw values written directly by CC_JDI830::set() ---------------
-    // These hold the most recent MobiFlight input.  updateCalculated()
-    // blends each into the corresponding smoothed field every frame.
-    // Per-cylinder EGT/CHT raws are written by set() (when the sim sends
-    // per-cylinder data) or by spreadCylinders() (when the sim sends only
-    // a single value and we synthesize per-cylinder variation).
+    // Hold the most recent MobiFlight input.  EMA pass blends each into
+    // the matching *Smoothed accumulator every frame.  Per-cylinder
+    // EGT/CHT raws come from set() (per-cylinder data) or from
+    // spreadCylinders() (synthetic per-cylinder from a single value).
     float egtRawPerCyl[MAX_CYLINDERS] = {0};
     float chtRawPerCyl[MAX_CYLINDERS] = {0};
     float tit1Raw = 0;
@@ -135,6 +154,10 @@ struct EngineState {
     float rpmRaw  = 0;
     float mapRaw  = 0;
     float ffRaw   = 0;
+
+    // 4 Hz display refresh state
+    static constexpr unsigned long DISPLAY_REFRESH_MS = 250;  // 4 Hz
+    unsigned long lastDisplayRefreshMs = 0;
 
     // ---- Fuel / range fields (not smoothed — change slowly already) -----
     float fuelRem = 0;       // Fuel remaining (gallons) — reported by sim
@@ -166,6 +189,13 @@ struct EngineState {
     float egtSelected = 0;
     float chtSelected = 0;
 
+    // Live values for the EGT-switch cylinder/TIT cycle.  Updated each frame
+    // by CC_JDI830 from egt[cycleIdx]/cht[cycleIdx] (cylinder slots) or from
+    // tit1/tit2 (TIT slots).  The bottom-bar synthesized page points at these
+    // so its value-change tracker sees live updates between page advances.
+    float egtCycle = 0;
+    float chtCycle = 0;
+
     // Raw single-value inputs from the sim.  When reportsSingleEgtCht is
     // true, set() stores the sim's one EGT/CHT here instead of writing
     // directly to the per-cylinder arrays.  spreadCylinders() then uses
@@ -188,52 +218,72 @@ struct EngineState {
     float chtRawPrev = 0;
 
     // -----------------------------------------------------------------
-    // updateCalculated — recompute every CALCULATED field from inputs.
+    // updateCalculated — two-tier update:
+    //   (1) EMA pass: every call, blend *Raw → *Smoothed.  This is what
+    //       gives us full-rate noise rejection — every MobiFlight delta
+    //       contributes to the average.
+    //   (2) Display refresh: every DISPLAY_REFRESH_MS (~4 Hz), copy
+    //       *Smoothed into the public display fields and recompute peaks,
+    //       differentials, fuel calcs, etc.  This matches the real
+    //       EDM830's ~4 Hz refresh and stops gauges from jittering on
+    //       every frame.
     //
-    // Call once per frame after new sim values arrive.  numCylinders
-    // comes from the active PlaneProfile so this struct doesn't need
-    // to know about profiles at all.
+    // nowMs is millis() from the caller, used to time the 4 Hz gate.
     // -----------------------------------------------------------------
-    void updateCalculated(int numCylinders) {
-        // --- Smoothing pass --------------------------------------------
-        // Blend each *Raw value (most recent MobiFlight input) into the
-        // matching smoothed field.  Done first so all downstream peak/
-        // dif/lean/alarm logic operates on smoothed values consistently.
-        //
+    void updateCalculated(int numCylinders, unsigned long nowMs) {
+        // --- Tier 1: EMA pass (every frame) ----------------------------
         // Per-cylinder EGT/CHT raws come either from set() writing real
         // sim values directly, or from spreadCylinders() writing synthetic
         // ones based on egtRaw/chtRaw.  Either way, they're already in
         // egtRawPerCyl[] / chtRawPerCyl[] by the time we get here.
         for (int i = 0; i < numCylinders; i++) {
-            emaStep(egt[i], egtRawPerCyl[i], SmoothingAlpha::egt, SmoothingSnap::egt);
-            emaStep(cht[i], chtRawPerCyl[i], SmoothingAlpha::cht, SmoothingSnap::cht);
+            emaStep(egtSmoothed[i], egtRawPerCyl[i], SmoothingAlpha::egt, SmoothingSnap::egt);
+            emaStep(chtSmoothed[i], chtRawPerCyl[i], SmoothingAlpha::cht, SmoothingSnap::cht);
         }
-        emaStep(tit1, tit1Raw, SmoothingAlpha::tit,  SmoothingSnap::tit);
-        emaStep(tit2, tit2Raw, SmoothingAlpha::tit,  SmoothingSnap::tit);
-        emaStep(oilT, oilTRaw, SmoothingAlpha::oilT, SmoothingSnap::oilT);
-        emaStep(oilP, oilPRaw, SmoothingAlpha::oilP, SmoothingSnap::oilP);
-        emaStep(bat,  batRaw,  SmoothingAlpha::bat,  SmoothingSnap::bat);
-        emaStep(oat,  oatRaw,  SmoothingAlpha::oat,  SmoothingSnap::oat);
-        emaStep(crb,  crbRaw,  SmoothingAlpha::misc, SmoothingSnap::misc);
-        emaStep(cdt,  cdtRaw,  SmoothingAlpha::misc, SmoothingSnap::misc);
-        emaStep(iat,  iatRaw,  SmoothingAlpha::misc, SmoothingSnap::misc);
-        // RPM smoothing happens on a separate un-rounded accumulator so
-        // the round-to-10 doesn't feed back into the EMA and stall the
-        // value.  (If we EMA-blended `rpm` directly and then rounded it,
-        // each frame's small fractional progress would get snapped away
-        // and the gauge would lock at a multiple of 10 even when the
-        // raw value is offset — e.g. raw=1031 → smoothed stuck at 1020.)
-        //
-        // lroundf() rounds to nearest (away from zero on .5).  We use it
-        // instead of `(int)(x + 0.5f)` because float storage of e.g.
-        // 2350.0f can be 2349.9999..., and the int-cast in ArcGauge's
-        // drawNumber() truncates — producing 2349 on the display.
-        emaStep(rpmSmoothedExact, rpmRaw, SmoothingAlpha::rpm, SmoothingSnap::rpm);
-        rpm = lroundf(rpmSmoothedExact / 10.0f) * 10.0f;
-        emaStep(map,  mapRaw,  SmoothingAlpha::map, SmoothingSnap::map);
-        emaStep(ff,   ffRaw,   SmoothingAlpha::ff,  SmoothingSnap::ff);
+        emaStep(tit1Smoothed, tit1Raw, SmoothingAlpha::tit,  SmoothingSnap::tit);
+        emaStep(tit2Smoothed, tit2Raw, SmoothingAlpha::tit,  SmoothingSnap::tit);
+        emaStep(oilTSmoothed, oilTRaw, SmoothingAlpha::oilT, SmoothingSnap::oilT);
+        emaStep(oilPSmoothed, oilPRaw, SmoothingAlpha::oilP, SmoothingSnap::oilP);
+        emaStep(batSmoothed,  batRaw,  SmoothingAlpha::bat,  SmoothingSnap::bat);
+        emaStep(oatSmoothed,  oatRaw,  SmoothingAlpha::oat,  SmoothingSnap::oat);
+        emaStep(crbSmoothed,  crbRaw,  SmoothingAlpha::misc, SmoothingSnap::misc);
+        emaStep(cdtSmoothed,  cdtRaw,  SmoothingAlpha::misc, SmoothingSnap::misc);
+        emaStep(iatSmoothed,  iatRaw,  SmoothingAlpha::misc, SmoothingSnap::misc);
+        emaStep(rpmSmoothed,  rpmRaw,  SmoothingAlpha::rpm,  SmoothingSnap::rpm);
+        emaStep(mapSmoothed,  mapRaw,  SmoothingAlpha::map,  SmoothingSnap::map);
+        emaStep(ffSmoothed,   ffRaw,   SmoothingAlpha::ff,   SmoothingSnap::ff);
 
-        // --- EGT peak & differential ---
+        // --- Tier 2 gate: only refresh display fields at 4 Hz ----------
+        // unsigned subtraction handles millis() wraparound correctly
+        // (wraps every ~49 days — well past any flight).
+        if (nowMs - lastDisplayRefreshMs < DISPLAY_REFRESH_MS) {
+            return;
+        }
+        lastDisplayRefreshMs = nowMs;
+
+        // --- Snapshot smoothed → display fields ------------------------
+        for (int i = 0; i < numCylinders; i++) {
+            egt[i] = egtSmoothed[i];
+            cht[i] = chtSmoothed[i];
+        }
+        tit1 = tit1Smoothed;
+        tit2 = tit2Smoothed;
+        oilT = oilTSmoothed;
+        oilP = oilPSmoothed;
+        bat  = batSmoothed;
+        oat  = oatSmoothed;
+        crb  = crbSmoothed;
+        cdt  = cdtSmoothed;
+        iat  = iatSmoothed;
+        map  = mapSmoothed;
+        ff   = ffSmoothed;
+        // RPM: round un-rounded EMA accumulator to nearest 10 for display.
+        // lroundf rounds to nearest (away from zero on .5) — produces a
+        // clean integer so the subsequent (int) cast in ArcGauge's
+        // drawNumber() can't truncate 2350.0f to 2349.
+        rpm = lroundf(rpmSmoothed / 10.0f) * 10.0f;
+
+        // --- EGT peak & differential (uses display values) -------------
         auto egtMax = std::max_element(egt, egt + numCylinders);
         auto egtMin = std::min_element(egt, egt + numCylinders);
         egtPeak    = *egtMax;
@@ -249,22 +299,17 @@ struct EngineState {
         cdtLessIat = cdt - iat;
 
         // --- Fuel calculations ---
-        // used = fuelCapacity - fuelRem;
-
         if (ff > 0.01f) {
             endurance = (fuelRem / ff) * 60.0f;   // minutes
         } else {
             endurance = 0;
         }
 
-        // Fuel required & reserve to waypoint
-        // req = gallons needed at current ff to cover waypointDist
-        // (waypointDist is in NM; groundspeed isn't available yet,
-        //  so for now we approximate with ff directly — placeholder)
-        if (ff > 0.01f && waypointDist > 0) {
-            // TODO: needs groundspeed for a real calculation
-            if(mpg != 0) req = waypointDist / mpg;
-            else req = 0;
+        // Fuel required & reserve to waypoint.
+        // req = waypointDist (NM) / mpg (NM per gal) = gallons to waypoint.
+        // res = what's left in the tank after that burn.
+        if (waypointDist > 0 && mpg > 0.01f) {
+            req = waypointDist / mpg;
             res = fuelRem - req;
         } else {
             req = 0;

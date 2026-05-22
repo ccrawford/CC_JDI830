@@ -188,6 +188,13 @@ void CC_JDI830::setProfile(int index) {
     // and the new profile are captured so scan() can check them each frame.
     _alarmMgr.buildAlarms(*activeProfile, curState);
     _bottomBarMode = BottomBarMode::ALL_DATA;
+
+    // If the EGT-switch cycle was active, rebuild its page against the new
+    // profile (slot count, gauge color ranges, TIT presence may all differ).
+    if (_egtCycleActive) {
+        _egtCycleIdx = 0;
+        refreshEgtCyclePage();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -324,6 +331,7 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
            char* tok = strtok(setPoint, "|");
            for (int i = 0; i < nCyl && tok != nullptr; i++) {
                curState.egtRawPerCyl[i] = strtof(tok, nullptr);
+               tok = strtok(nullptr, "|");
             }
         } else {
             float val = strtof(setPoint, nullptr);
@@ -484,8 +492,37 @@ void CC_JDI830::updateCalculatedFields()
                                  activeProfile->fakeCylSpreadPct);
     }
 
-    curState.updateCalculated(nCyl);
+    curState.updateCalculated(nCyl, millis());
 
+    // --- Box cylinder + cycle live values -------------------------------
+    // Outside EGT-switch mode the boxed cylinder follows the hottest EGT
+    // (already computed into egtPeakCyl above).  Inside EGT-switch mode,
+    // _egtCycleIdx names the active slot — for cylinder slots, write the
+    // cycle pointers from egt[]/cht[]; for TIT slots, point egtCycle at
+    // the TIT value (chtCycle stays at the last cylinder value but the
+    // SINGLE TIT page ignores it).
+    if (_egtCycleActive && activeProfile) {
+        int idx = _egtCycleIdx;
+        if (idx < nCyl) {
+            curState.selectedCylinder = idx;
+            curState.egtCycle = curState.egt[idx];
+            curState.chtCycle = curState.cht[idx];
+        } else {
+            bool isT2 = (idx == nCyl + 1)
+                     || (idx == nCyl && !activeProfile->hasTit1);
+            curState.egtCycle = isT2 ? curState.tit2 : curState.tit1;
+            // chtCycle unused on TIT slots
+        }
+    } else {
+        // Normal operation: box tracks hottest cylinder.  Only push to the
+        // gauge when the value changes — setSelectedCylinder() unconditionally
+        // marks the gauge dirty.
+        int hot = curState.egtPeakCyl;
+        if (hot >= 0 && hot < nCyl && curState.selectedCylinder != hot) {
+            curState.selectedCylinder = hot;
+            _egtChtBars.setSelectedCylinder(hot);
+        }
+    }
 
     // --- CHT cooling rate (worst cylinder, deg/min) ---
     curState.updateCoolingRate(millis(), nCyl);
@@ -569,6 +606,106 @@ void CC_JDI830::toggleParamExclude()
     showCurrentPage();
 }
 
+// ---------------------------------------------------------------------------
+// EGT-switch cylinder/TIT cycle
+//
+// When the scan switch is in EGT, the bottom bar walks each cylinder's
+// EGT/CHT (DUAL page) and then any TITs (SINGLE page).  The boxed
+// cylinder-number indicator under the column-bar gauge tracks the cycle.
+//
+// We synthesize _egtCyclePage in place rather than baking N per-cylinder
+// entries into _bottomPages[].  The actual values come from
+// curState.egtCycle / curState.chtCycle, which updateCalculatedFields()
+// writes each frame from the appropriate cylinder (or TIT) — so the
+// bottom bar's value-change detector sees live updates between page
+// advances without us having to rebuild the page.
+// ---------------------------------------------------------------------------
+
+// Total slots in the cycle: one per cylinder + one per TIT (0, 1, or 2).
+static inline int egtCycleSlotCount(const PlaneProfile& p)
+{
+    int n = p.numCylinders;
+    if (p.hasTit1) n++;
+    if (p.hasTit2) n++;
+    return n;
+}
+
+void CC_JDI830::enterEgtCycle()
+{
+    _egtCycleActive = true;
+    _egtCycleIdx    = 0;
+    refreshEgtCyclePage();
+}
+
+void CC_JDI830::advanceEgtCycle(int dir)
+{
+    if (!activeProfile) return;
+    int slots = egtCycleSlotCount(*activeProfile);
+    if (slots <= 0) return;
+
+    // (idx + dir + slots) % slots — adding `slots` keeps the result
+    // non-negative even when dir is -1 (C++ % on negatives is
+    // implementation-defined for sign, so we sidestep it).
+    _egtCycleIdx = ((_egtCycleIdx + dir) % slots + slots) % slots;
+    refreshEgtCyclePage();
+}
+
+void CC_JDI830::refreshEgtCyclePage()
+{
+    if (!activeProfile) return;
+    const PlaneProfile& p = *activeProfile;
+    int nCyl  = p.numCylinders;
+    int slots = egtCycleSlotCount(p);
+    if (slots <= 0) return;
+
+    // Defensive clamp — profile may have changed underneath us, leaving
+    // _egtCycleIdx past the new slot count.
+    if (_egtCycleIdx >= slots) _egtCycleIdx = 0;
+    int idx = _egtCycleIdx;
+
+    if (idx < nCyl) {
+        // Cylinder slot — DUAL page with EGT N / CHT N.
+        // Update selected cylinder so the column-bar box tracks the cycle.
+        // egtSelected/chtSelected get refreshed in updateCalculated() but
+        // we also feed egtCycle/chtCycle to make the bottom-bar page point
+        // at fresh values immediately on this frame.
+        curState.selectedCylinder = idx;
+        _egtChtBars.setSelectedCylinder(idx);
+
+        snprintf(_egtCycleLabelL, sizeof(_egtCycleLabelL), "EGT%d", idx + 1);
+        snprintf(_egtCycleLabelR, sizeof(_egtCycleLabelR), "CHT%d", idx + 1);
+
+        _egtCyclePage.mode      = BottomMode::DUAL;
+        _egtCyclePage.leftDraw  = drawDualLabelValue;
+        _egtCyclePage.left      = makeValueDef(_egtCycleLabelL, &curState.egtCycle,
+                                               0, nullptr, p.egt);
+        _egtCyclePage.rightDraw = drawDualLabelValue;
+        _egtCyclePage.right     = makeValueDef(_egtCycleLabelR, &curState.chtCycle,
+                                               0, nullptr, p.cht);
+        _egtCyclePage.nonExcludable = true;
+        _egtCyclePage.group     = ScanGroup::TEMP;
+    } else {
+        // TIT slot — SINGLE page.  Suppress the column-bar box.
+        _egtChtBars.setSelectedCylinder(-1);
+
+        // Slot ordering: cylinders, then TIT1 (if present), then TIT2.
+        bool isT2 = (idx == nCyl + 1) || (idx == nCyl && !p.hasTit1);
+        const float* ptr = isT2 ? &curState.tit2 : &curState.tit1;
+        const GaugeRangeDef& rng = isT2 ? p.tit2 : p.tit1;
+        snprintf(_egtCycleLabelL, sizeof(_egtCycleLabelL), "%s", isT2 ? "TIT2" : "TIT");
+
+        _egtCyclePage.mode      = BottomMode::SINGLE;
+        _egtCyclePage.leftDraw  = drawSingleValueUnits;
+        _egtCyclePage.left      = makeValueDef(_egtCycleLabelL, ptr, 0, nullptr, rng);
+        _egtCyclePage.rightDraw = nullptr;
+        _egtCyclePage.right     = BottomValueDef{};
+        _egtCyclePage.nonExcludable = true;
+        _egtCyclePage.group     = ScanGroup::TEMP;
+    }
+
+    _bottomBar.setPage(_egtCyclePage, false);
+}
+
 // handleGesture, updateFuelSetupDisplay, updateStatusLabels, drawDebugState,
 // onStepPress, onStepLongPress, stepButtonStateChange, lfButtonStateChange
 // are in CC_JDI830_buttons.cpp
@@ -608,8 +745,19 @@ void CC_JDI830::update()
         else                                 hw = ScanSwitch::ALL;
         if (hw != _scanSwitch) {
             _scanSwitch = hw;
-            if (_autoScan) advanceBottomPageAuto();
-            else           advanceBottomPage();
+            if (hw == ScanSwitch::EGT) {
+                // Entering EGT: take over the bottom bar with the
+                // per-cylinder/TIT cycle.  Auto-rotate timing is reused.
+                enterEgtCycle();
+                _lastPageChange = millis();
+            } else {
+                // Leaving EGT: release the cycle.  The per-frame default
+                // in updateCalculatedFields() will restore the box to the
+                // hottest cylinder on the next pass.
+                _egtCycleActive = false;
+                if (_autoScan) advanceBottomPageAuto();
+                else           advanceBottomPage();
+            }
         }
     }
 
@@ -700,7 +848,8 @@ void CC_JDI830::update()
                 if (_autoScan) {
                     if (now - _lastPageChange > PAGE_ROTATE_MS) {
                         _lastPageChange = now;
-                        advanceBottomPageAuto();
+                        if (_egtCycleActive) advanceEgtCycle(+1);
+                        else                 advanceBottomPageAuto();
                     }
                 }
             }
