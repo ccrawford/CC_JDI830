@@ -63,7 +63,7 @@ static const PlaneProfile PROFILE_A2A_COMANCHE = {
     // min, max, redline, {color ranges: {start, end, color}, number of color ranges}
     .rpm     = { 0, 2900, 2575,    { {0, 2575, TFT_GREEN}, {2575, 2900, TFT_RED} }, 2 },
     .map     = { 0, 33, 31,       { {0, 31, TFT_GREEN}, {31, 33, TFT_RED} }, 2 },
-    .oilT    = { 60, 260, 0,      { {0, 90, TFT_RED}, {90, 220, TFT_GREEN}, {245, 999, TFT_RED} }, 3 },
+    .oilT    = { 60, 260, 0,      { {0, 90, TFT_RED}, {90, 245, TFT_GREEN}, {245, 999, TFT_RED} }, 3 },
     .oilP    = { 0, 120, 25,      { {0, 25, TFT_RED}, {20, 100, TFT_GREEN}, {100, 999, TFT_RED} }, 3 },
     .bat     = { 11, 17.5, 0,        { {11, 11.9, TFT_RED}, {12, 16, TFT_GREEN}, {16, 99, TFT_RED} }, 3 },
     .oat     = { -20, 50, 0,       { {-20, 50, TFT_GREEN} }, 1 },
@@ -71,7 +71,7 @@ static const PlaneProfile PROFILE_A2A_COMANCHE = {
     .cht     = { 200, 600, 380,    { {0, 380, TFT_WHITE}, {380, 1000, TFT_RED} }, 2 },
     .tit1    = {},                  // no TIT
     .tit2    = {},
-    .ff      = { 0, 30, 0,         { {0, 0.0, TFT_RED}, {0.1, 30, TFT_GREEN} }, 2 },
+    .ff      = { 0, 30, 0,         { {0, 1.5, TFT_RED}, {1.5, 30, TFT_GREEN} }, 2 },
     .fuelRem = { 0, 90, 0,         { {0, 10, TFT_RED}, {10, 90, TFT_GREEN} }, 2 },  // max patched from sim at runtime
     .used    = { 0, 9999, 0,       { {0, 9999, TFT_GREEN} }, 1},
     .endurance = { 0, 9999, 0,     { {0, 20, TFT_RED}, {20, 9999, TFT_GREEN} }, 2},

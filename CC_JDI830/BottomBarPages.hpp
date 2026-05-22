@@ -173,15 +173,21 @@ inline void drawCalculatedValue(LGFX_Sprite &spr, const BottomValueDef &def,
 {
     float curVal = def.ptr ? *def.ptr : 0;
     int16_t center = (xLeft + xRight) / 2;
-    int16_t topY   = h / 5;         // "Calculated" label near the top
-    int16_t valY   = h / 2 + h / 8; // value shifted down to make room
+
+    if (def.guard && *def.guard == 0) {
+        // No waypoint — show "NO - WPT" in place of the value
+        spr.loadFont(ArialNI36);
+        spr.setTextDatum(BC_DATUM);
+        spr.setTextColor(TFT_WHITE);
+        spr.drawString("NO - WPT", center, h + 5);
+        return;
+    }
 
     // "Calculated" label (small)
     spr.loadFont(ArialN11);
     spr.setTextColor(TFT_WHITE);
     spr.setTextDatum(TL_DATUM);
     spr.drawString("Calculated", center+4, 0);
-    
 
     // Value (smaller than normal to leave room for label above)
     spr.loadFont(SevenSeg42);
@@ -481,10 +487,12 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p, EngineStat
     // Fuel required to waypoint (calculated)
     if (p.hasReq)
     {
+        auto reqDef = makeValueDef("REQ", &state.req,
+                                   decimalsFor(DisplayVarId::FUEL_REQ, p, state), nullptr, p.req);
+        reqDef.guard = &state.waypointDist;
         pages[n++] = {BottomMode::SINGLE,
-                      drawSingleValueUnits,
-                      makeValueDef("REQ", &state.req,
-                                   decimalsFor(DisplayVarId::FUEL_REQ, p, state), nullptr, p.req),
+                      drawCalculatedValue,
+                      reqDef,
                       nullptr, {},
                       false, ScanGroup::FUEL};
     }
@@ -492,10 +500,12 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p, EngineStat
     // Fuel reserve at waypoint (calculated)
     if (p.hasRes)
     {
+        auto resDef = makeValueDef("REM", &state.res,
+                                   decimalsFor(DisplayVarId::FUEL_RES, p, state), nullptr, p.res);
+        resDef.guard = &state.waypointDist;
         pages[n++] = {BottomMode::SINGLE,
                       drawCalculatedValue,
-                      makeValueDef("REM", &state.res,
-                                   decimalsFor(DisplayVarId::FUEL_RES, p, state), nullptr, p.res),
+                      resDef,
                       nullptr, {},
                       false, ScanGroup::FUEL};
     }

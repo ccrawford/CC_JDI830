@@ -26,6 +26,8 @@
 
 #define STEP_PIN 1
 #define LF_PIN 0
+#define SCAN_FF_PIN  26   // low = FF (fuel) position
+#define SCAN_EGT_PIN 27   // low = EGT (temp) position
 
 // ---------------------------------------------------------------------------
 // BottomBarMode — which system currently "owns" the bottom bar.

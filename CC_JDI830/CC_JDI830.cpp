@@ -268,6 +268,8 @@ void CC_JDI830::begin()
 
     pinMode(STEP_PIN, INPUT_PULLUP);
     pinMode(LF_PIN, INPUT_PULLUP);
+    pinMode(SCAN_FF_PIN,  INPUT_PULLUP);
+    pinMode(SCAN_EGT_PIN, INPUT_PULLUP);
 }
 
 void CC_JDI830::attach()
@@ -595,8 +597,22 @@ void CC_JDI830::update()
     if(lfBtn != _lfButtonLastState) {
         lfButtonStateChange(lfBtn);
         _lfButtonLastState = lfBtn;
-    } 
-    
+    }
+
+    // 3-way scan switch — read hardware pins directly (active-low, pull-up).
+    // FF pin low → fuel pages; EGT pin low → temp pages; neither → all pages.
+    {
+        ScanSwitch hw;
+        if      (!digitalRead(SCAN_FF_PIN))  hw = ScanSwitch::FF;
+        else if (!digitalRead(SCAN_EGT_PIN)) hw = ScanSwitch::EGT;
+        else                                 hw = ScanSwitch::ALL;
+        if (hw != _scanSwitch) {
+            _scanSwitch = hw;
+            if (_autoScan) advanceBottomPageAuto();
+            else           advanceBottomPage();
+        }
+    }
+
     // --- Fuel setup timed transitions ---
     // The "FUEL" splash shows for 1 second, then auto-advances to "FILL? N".
     if (_displayMode == DisplayMode::FUEL_SETUP

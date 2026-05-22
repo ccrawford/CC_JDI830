@@ -37,6 +37,7 @@ struct BottomValueDef
     ColorRange  colors[3];
     uint8_t     colorCount;
     bool        excluded;    // true = page excluded from AUTO rotation (draw dot before label)
+    const float *guard;      // if non-null, show "NO - WPT" when *guard == 0
 };
 
 // Look up the display color for a value based on its color ranges.
