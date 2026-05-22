@@ -336,18 +336,17 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
 
     case 0: {
         // EGT — either "val1|val2|...|valN" per cylinder, or a single value.
+        // Writes the *raw* per-cylinder buffer.  EngineState::updateCalculated()
+        // EMA-blends these into the smoothed egt[] array each frame.
         // When the profile says the sim only reports one EGT, stash it in
-        // egtRaw and let spreadCylinders() build the per-cylinder array.
-        // When the sim sends real per-cylinder data, write directly.
+        // egtRaw and let spreadCylinders() build the per-cylinder values
+        // (which it now also writes into egtRawPerCyl[]).
        cmdMessenger.sendCmd(kStatus,setPoint);
        int nCyl = activeProfile->numCylinders;
        if (strchr(setPoint, '|')) {
            char* tok = strtok(setPoint, "|");
            for (int i = 0; i < nCyl && tok != nullptr; i++) {
-            //    Serial.printf("tok %d:%s\n",i, tok);
-               curState.egt[i] = strtof(tok, nullptr);
-         //      tok = strtok(nullptr, "|");
-         //      Serial.printf("token %d: %f\n",i, curState.egt[i]);
+               curState.egtRawPerCyl[i] = strtof(tok, nullptr);
             }
         } else {
             float val = strtof(setPoint, nullptr);
@@ -357,21 +356,20 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
                 // Profile expects per-cylinder data but we only got one value.
                 // Write to cyl 0 only so the lopsided display makes it obvious
                 // something's misconfigured.
-                curState.egt[0] = val;
+                curState.egtRawPerCyl[0] = val;
             }
         }
-        char buf[255];
-        sprintf(buf, "1: %f 2:%f 3:%f 4:%f 5:%f 6:%f\n", curState.egt[0],curState.egt[1],curState.egt[2],curState.egt[3],curState.egt[4],curState.egt[5]);
         break;
     }
 
     case 1: {
-        // CHT — same pipe-delimited or single-value format as EGT
+        // CHT — same pipe-delimited or single-value format as EGT.
+        // Writes the raw per-cylinder buffer; see case 0 for details.
         int nCyl = activeProfile->numCylinders;
         if (strchr(setPoint, '|')) {
             char* tok = strtok(setPoint, "|");
             for (int i = 0; i < nCyl && tok != nullptr; i++) {
-                curState.cht[i] = strtof(tok, nullptr);
+                curState.chtRawPerCyl[i] = strtof(tok, nullptr);
                 tok = strtok(nullptr, "|");
             }
         } else {
@@ -379,54 +377,54 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
             if (activeProfile->reportsSingleEgtCht) {
                 curState.chtRaw = val;
             } else {
-                curState.cht[0] = val;
+                curState.chtRawPerCyl[0] = val;
             }
         }
         break;
     }
 
     case 2:
-        curState.tit1 = strtof(setPoint, nullptr);
+        curState.tit1Raw = strtof(setPoint, nullptr);
         break;
 
     case 3:
-        curState.tit2 = strtof(setPoint, nullptr);
+        curState.tit2Raw = strtof(setPoint, nullptr);
         break;
 
     case 4:
-        curState.oilT = strtof(setPoint, nullptr);
+        curState.oilTRaw = strtof(setPoint, nullptr);
         break;
 
     case 5:
-        curState.oilP = strtof(setPoint, nullptr);
+        curState.oilPRaw = strtof(setPoint, nullptr);
         break;
 
     case 6:
-        curState.bat = strtof(setPoint, nullptr);
+        curState.batRaw = strtof(setPoint, nullptr);
         break;
 
     case 7:
-        curState.oat = strtof(setPoint, nullptr);
+        curState.oatRaw = strtof(setPoint, nullptr);
         break;
 
     case 8:
-        curState.crb = strtof(setPoint, nullptr);
+        curState.crbRaw = strtof(setPoint, nullptr);
         break;
 
     case 9:
-        curState.cdt = strtof(setPoint, nullptr);
+        curState.cdtRaw = strtof(setPoint, nullptr);
         break;
 
     case 10:
-        curState.iat = strtof(setPoint, nullptr);
+        curState.iatRaw = strtof(setPoint, nullptr);
         break;
 
     case 11:
-        curState.rpm = strtof(setPoint, nullptr);
+        curState.rpmRaw = strtof(setPoint, nullptr);
         break;
 
     case 12:
-        curState.map = strtof(setPoint, nullptr);
+        curState.mapRaw = strtof(setPoint, nullptr);
         break;
 
     case 13:
@@ -438,7 +436,7 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
         break;
 
     case 15:
-        curState.ff = strtof(setPoint, nullptr);
+        curState.ffRaw = strtof(setPoint, nullptr);
         break;
 
     case 16: {
