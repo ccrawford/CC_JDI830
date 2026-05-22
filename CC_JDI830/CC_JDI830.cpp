@@ -85,6 +85,8 @@ void CC_JDI830::setupGauges() {
     _rpmGauge.setValueFont(arcValueFont);
     _rpmGauge.setLabelFont(ArialNB12);
     _rpmGauge.setLabelY(L.rpmArc.labelY);
+    _rpmGauge.setHPCutout(L.rpmHpCutout.x, L.rpmHpCutout.y,
+                          L.rpmHpCutout.w, L.rpmHpCutout.h);
     applyRangeDef(_rpmGauge, p.rpm);
     _rpmGauge.init(L.rpm.w, L.rpm.h);
 
@@ -101,6 +103,8 @@ void CC_JDI830::setupGauges() {
         _mapGauge.setValueFont(arcValueFont);
         _mapGauge.setLabelFont(ArialNB12);
         _mapGauge.setLabelY(L.mapArc.labelY);
+        _mapGauge.setHPCutout(L.mapHpCutout.x, L.mapHpCutout.y,
+                              L.mapHpCutout.w, L.mapHpCutout.h);
         applyRangeDef(_mapGauge, p.map);
         _mapGauge.init(L.map.w, L.map.h);
     }
@@ -174,29 +178,43 @@ void CC_JDI830::setProfile(int index) {
     if (index < 0 || index >= NUM_PROFILES) return;
     if (index == _profileIndex) return;       // no-op if unchanged
 
-    _lcd.fillScreen(TFT_BLACK);
-    // Erase right-bar gauges that may not exist in the new layout.
-    // Must happen before we rebuild _displayCfg, while the old slot count
-    // is still valid.
-    int oldSlots = _displayCfg.numRightBarSlots;
-
     _profileIndex = index;
     activeProfile = ALL_PROFILES[index];
     curState.lastCoolingUpdate = 0;          // force cooling rate re-bootstrap
 
-    _displayCfg = buildDefaultConfig(*activeProfile);
-    _lcd.setRotation(_displayCfg.layout->rotation);
-
-    // If the new layout has fewer slots, erase the ones that are going away
-    // for (int i = _displayCfg.numRightBarSlots; i < oldSlots; i++)
-    //     _rightBars[i].erase();
-
-    setupGauges();
+    rebuildLayout();
 
     // Build the alarm table for this profile — pointers into curState
     // and the new profile are captured so scan() can check them each frame.
     _alarmMgr.buildAlarms(*activeProfile, curState);
     _bottomBarMode = BottomBarMode::ALL_DATA;
+}
+
+// ---------------------------------------------------------------------------
+// setLayout — switch screen orientation at runtime.
+// No-op if the requested mode is already active.  Requires an active profile
+// (rebuildLayout() dereferences activeProfile via buildDefaultConfig()).
+// ---------------------------------------------------------------------------
+void CC_JDI830::setLayout(LayoutMode mode) {
+    if (mode == _layoutMode) return;
+    if (!activeProfile) return;   // begin() hasn't run yet — _layoutMode set, will take effect at first setProfile()
+    _layoutMode = mode;
+    rebuildLayout();
+}
+
+// ---------------------------------------------------------------------------
+// rebuildLayout — clear the screen, rebuild the DisplayConfig for the current
+// profile + layout mode, re-init all gauge sprites with new dimensions, and
+// force a full redraw.  Shared by setProfile() and setLayout() since both
+// invalidate every sprite on screen.
+// ---------------------------------------------------------------------------
+void CC_JDI830::rebuildLayout() {
+    _lcd.fillScreen(TFT_BLACK);
+
+    _displayCfg = buildDefaultConfig(*activeProfile, _layoutMode);
+    _lcd.setRotation(_displayCfg.layout->rotation);
+
+    setupGauges();
 
     // setupGauges() reconfigures ranges/colors/labels but the float
     // values haven't changed, so the base Gauge::update() won't see
@@ -231,33 +249,25 @@ CC_JDI830::CC_JDI830(uint8_t sclk, uint8_t mosi, uint8_t dc, uint8_t cs, uint8_t
 {
     _pinSCLK = sclk;
     _pinMOSI = mosi;
-    _pinDC = dc;
-    _pinCS = cs;
-    _pinRST = rst;
-    _pinBL = bl;
+    _pinDC   = dc;
+    _pinCS   = cs;
+    _pinRST  = rst;
+    _pinBL   = bl;
 }
 
 void CC_JDI830::begin()
 {
-    // Apply pin config from MobiFlight before initializing the display hardware
     _lcd.configurePins(_pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL);
-
-    // Serial.printf("sclk: %d mosi: %d dc: %d cs: %d rst: %d bl: %d\n", _pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL);
-
     _lcd.init();
-    // Rotation is set in setProfile() from the active GaugeLayout,
-    // so the first setProfile(0) call below handles it.
+    _lcd.setBrightness(255);
     _lcd.fillScreen(TFT_BLACK);
 
-    // Load default profile (later: read saved index from NVS here)
     setProfile(0);
 
-    // Device starts in FUEL_SETUP mode — record start time for the
-    // 1-second "FUEL" splash, then the wizard takes over.
     _fuelSetupStartTime = millis();
 
-    pinMode(0, INPUT_PULLUP);
-    pinMode(14, INPUT_PULLUP);
+    pinMode(STEP_PIN, INPUT_PULLUP);
+    pinMode(LF_PIN, INPUT_PULLUP);
 }
 
 void CC_JDI830::attach()
@@ -301,18 +311,17 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
 
     case 0: {
         // EGT — either "val1|val2|...|valN" per cylinder, or a single value.
+        // Writes the *raw* per-cylinder buffer.  EngineState::updateCalculated()
+        // EMA-blends these into the smoothed egt[] array each frame.
         // When the profile says the sim only reports one EGT, stash it in
-        // egtRaw and let spreadCylinders() build the per-cylinder array.
-        // When the sim sends real per-cylinder data, write directly.
+        // egtRaw and let spreadCylinders() build the per-cylinder values
+        // (which it now also writes into egtRawPerCyl[]).
        cmdMessenger.sendCmd(kStatus,setPoint);
        int nCyl = activeProfile->numCylinders;
        if (strchr(setPoint, '|')) {
            char* tok = strtok(setPoint, "|");
            for (int i = 0; i < nCyl && tok != nullptr; i++) {
-            //    Serial.printf("tok %d:%s\n",i, tok);
-               curState.egt[i] = strtof(tok, nullptr);
-         //      tok = strtok(nullptr, "|");
-         //      Serial.printf("token %d: %f\n",i, curState.egt[i]);
+               curState.egtRawPerCyl[i] = strtof(tok, nullptr);
             }
         } else {
             float val = strtof(setPoint, nullptr);
@@ -322,21 +331,20 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
                 // Profile expects per-cylinder data but we only got one value.
                 // Write to cyl 0 only so the lopsided display makes it obvious
                 // something's misconfigured.
-                curState.egt[0] = val;
+                curState.egtRawPerCyl[0] = val;
             }
         }
-        char buf[255];
-        sprintf(buf, "1: %f 2:%f 3:%f 4:%f 5:%f 6:%f\n", curState.egt[0],curState.egt[1],curState.egt[2],curState.egt[3],curState.egt[4],curState.egt[5]);
         break;
     }
 
     case 1: {
-        // CHT — same pipe-delimited or single-value format as EGT
+        // CHT — same pipe-delimited or single-value format as EGT.
+        // Writes the raw per-cylinder buffer; see case 0 for details.
         int nCyl = activeProfile->numCylinders;
         if (strchr(setPoint, '|')) {
             char* tok = strtok(setPoint, "|");
             for (int i = 0; i < nCyl && tok != nullptr; i++) {
-                curState.cht[i] = strtof(tok, nullptr);
+                curState.chtRawPerCyl[i] = strtof(tok, nullptr);
                 tok = strtok(nullptr, "|");
             }
         } else {
@@ -344,54 +352,54 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
             if (activeProfile->reportsSingleEgtCht) {
                 curState.chtRaw = val;
             } else {
-                curState.cht[0] = val;
+                curState.chtRawPerCyl[0] = val;
             }
         }
         break;
     }
 
     case 2:
-        curState.tit1 = strtof(setPoint, nullptr);
+        curState.tit1Raw = strtof(setPoint, nullptr);
         break;
 
     case 3:
-        curState.tit2 = strtof(setPoint, nullptr);
+        curState.tit2Raw = strtof(setPoint, nullptr);
         break;
 
     case 4:
-        curState.oilT = strtof(setPoint, nullptr);
+        curState.oilTRaw = strtof(setPoint, nullptr);
         break;
 
     case 5:
-        curState.oilP = strtof(setPoint, nullptr);
+        curState.oilPRaw = strtof(setPoint, nullptr);
         break;
 
     case 6:
-        curState.bat = strtof(setPoint, nullptr);
+        curState.batRaw = strtof(setPoint, nullptr);
         break;
 
     case 7:
-        curState.oat = strtof(setPoint, nullptr);
+        curState.oatRaw = strtof(setPoint, nullptr);
         break;
 
     case 8:
-        curState.crb = strtof(setPoint, nullptr);
+        curState.crbRaw = strtof(setPoint, nullptr);
         break;
 
     case 9:
-        curState.cdt = strtof(setPoint, nullptr);
+        curState.cdtRaw = strtof(setPoint, nullptr);
         break;
 
     case 10:
-        curState.iat = strtof(setPoint, nullptr);
+        curState.iatRaw = strtof(setPoint, nullptr);
         break;
 
     case 11:
-        curState.rpm = strtof(setPoint, nullptr);
+        curState.rpmRaw = strtof(setPoint, nullptr);
         break;
 
     case 12:
-        curState.map = strtof(setPoint, nullptr);
+        curState.mapRaw = strtof(setPoint, nullptr);
         break;
 
     case 13:
@@ -403,12 +411,17 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
         break;
 
     case 15:
-        curState.ff = strtof(setPoint, nullptr);
+        curState.ffRaw = strtof(setPoint, nullptr);
         break;
 
-    case 16:
-        curState.fuelCapacity = strtof(setPoint, nullptr);
+    case 16: {
+        float newCap = strtof(setPoint, nullptr);
+        if (newCap != curState.fuelCapacity) {
+            curState.fuelCapacity = newCap;
+            setupRightBars();  // FUEL_REM bar range tracks sim-reported capacity
+        }
         break;
+    }
 
     case 17:
         curState.hp = strtof(setPoint, nullptr);
@@ -437,6 +450,18 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
         int val = atoi(setPoint);
         if (val >= 0 && val <= 2)
             _scanSwitch = static_cast<ScanSwitch>(val);
+        break;
+    }
+
+    case 24:
+        curState.used = strtof(setPoint, nullptr);
+        break;
+
+    case 25: {
+        // Screen layout: 0 = portrait, 1 = landscape
+        int val = atoi(setPoint);
+        if (val == 0 || val == 1)
+            setLayout(static_cast<LayoutMode>(val));
         break;
     }
 
@@ -559,14 +584,14 @@ void CC_JDI830::update()
     }
 
     // Change: Let's try managing buttons locally. 
-    bool stepBtn = !digitalRead(0);
+    bool stepBtn = !digitalRead(STEP_PIN);
     if(stepBtn != _stepButtonLastState) 
     {
         stepButtonStateChange(stepBtn);
         _stepButtonLastState = stepBtn;
     }
 
-    bool lfBtn = !digitalRead(14);
+    bool lfBtn = !digitalRead(LF_PIN);
     if(lfBtn != _lfButtonLastState) {
         lfButtonStateChange(lfBtn);
         _lfButtonLastState = lfBtn;
@@ -715,6 +740,6 @@ void CC_JDI830::update()
     _hpPct.update();
 
     // Debug overlay — shows mode, gesture, button state, connection status.
-    drawDebugState(gesture);
+    // drawDebugState(gesture);
 }
 

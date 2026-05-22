@@ -531,7 +531,6 @@ inline int buildBottomPages(BottomPage *pages, const PlaneProfile &p, EngineStat
                       false, ScanGroup::FUEL};
     }
 
-    // Fuel used (calculated)
     if (p.hasUsed)
     {
         pages[n++] = {BottomMode::SINGLE,

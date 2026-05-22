@@ -2,7 +2,6 @@
 
 #include "Arduino.h"
 
-// Display hardware
 #include "35tftspi480x320.h"
 
 // Display setup
@@ -24,6 +23,9 @@
 #include "ButtonInput.hpp"
 
 #define TFT_TRANSPARENT TFT_PINK
+
+#define STEP_PIN 1
+#define LF_PIN 0
 
 // ---------------------------------------------------------------------------
 // BottomBarMode — which system currently "owns" the bottom bar.
@@ -127,6 +129,10 @@ public:
     const PlaneProfile* activeProfile = nullptr;
     void setProfile(int index);
 
+    // Switch screen orientation at runtime (called from MobiFlight handler).
+    // No-op if the requested mode is already active.
+    void setLayout(LayoutMode mode);
+
     // STEP button actions — call from physical button ISR, MobiFlight
     // message handler, or any other input source.
     void onStepPress();       // short press: dismiss alarm 10 min, or advance page
@@ -178,6 +184,15 @@ private:
     // Current profile index (tracks activeProfile for change detection)
     // Starts at -1 so the first setProfile() call always applies.
     int _profileIndex = -1;
+
+    // Active layout orientation. Initial default tracks the historical
+    // USE_LANDSCAPE compile flag so an unchanged build keeps booting into
+    // landscape; MobiFlight message ID 25 overrides this at runtime.
+#ifdef USE_LANDSCAPE
+    LayoutMode _layoutMode = LayoutMode::LANDSCAPE;
+#else
+    LayoutMode _layoutMode = LayoutMode::PORTRAIT;
+#endif
 
 
     void updateCalculatedFields();
@@ -257,5 +272,8 @@ private:
     void toggleParamExclude();     // toggle exclude on current page (BOTH_TAP in MANUAL)
     void setupGauges();
     void drawStatic();
+    // Rebuild DisplayConfig + all gauge sprites for the current profile and
+    // _layoutMode.  Called by both setProfile() and setLayout().
+    void rebuildLayout();
     static void applyRangeDef(Gauge& gauge, const GaugeRangeDef& def);
 };

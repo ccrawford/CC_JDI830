@@ -53,11 +53,13 @@ struct GaugeLayout {
     // RPM arc gauge
     GaugeRect rpm;
     ArcParams rpmArc;
+    GaugeRect rpmHpCutout;          // transparent rect in sprite for %HP overlay (w=0 = none)
 
     // MAP arc gauge
     GaugeRect map;
     ArcParams mapArc;
     bool      mapInverted;          // true in portrait (arc opens upward)
+    GaugeRect mapHpCutout;          // transparent rect in sprite for %HP overlay (w=0 = none)
 
     // %HP value gauge
     GaugeRect hpPct;
@@ -95,42 +97,180 @@ struct GaugeLayout {
 // ===========================================================================
 // LAYOUT_PORTRAIT — 320x480, the original JPI 830 layout.
 //
-// This layout predates the GaugeLayout system and has an irregular structure
-// (RPM above MAP, inverted MAP arc, HBars to the right of arcs, etc.).
-// Defined directly with literal values transcribed from the original code.
+// Built from a handful of tunable constants. Tweak the values in
+// buildPortrait() and all derived positions follow automatically.
+//
+// Layout structure (top to bottom):
+//   [ RPM arc ] [ HBars ]   ← arc row 1
+//   [ MAP arc ] [ HBars ]   ← arc row 2 (MAP is inverted, opens upward)
+//        %HP overlay between RPM and MAP arcs
+//   [ EGT/CHT cluster      ]
+//   [ Bottom bar (centered)]
+//   [ Status bar — full width, no border ]
 // ===========================================================================
-static constexpr GaugeLayout LAYOUT_PORTRAIT = {
-    .screenW = 320, .screenH = 480, .rotation = 0,
 
-    //               x    y    w    h
-    .rpm    = {     10,   1, 205,  90 },
-    //             cx   cy  outerR innerR  startAngle  endAngle   labelY
-    .rpmArc = {    75,  85,    75,    70,    182.0f,    358.0f,     25 },
+static constexpr GaugeLayout buildPortrait() {
+    // =======================================================================
+    // KEY PARAMETERS — change these to reshape the layout
+    // =======================================================================
+    constexpr int16_t SCREEN_W   = 320;
+    constexpr int16_t SCREEN_H   = 480;
 
-    //               x    y    w    h
-    .map         = { 10,  95, 205,  90 },
-    //             cx   cy  outerR innerR  startAngle  endAngle    labelY
-    .mapArc      = { 75,   2,   75,   70,   178.0f,      2.0f,      42 },
-    .mapInverted = true,
+    // Screen border (status bar ignores these — it's always full-width,
+    // edge-to-edge at the very bottom).
+    constexpr int16_t borderH    = 4;   // left/right margin
+    constexpr int16_t borderV    = 4;   // top margin (bottom handled by status bar)
 
-    .hpPct       = {  2, 185,  90,  20 },
-    .hpGapCenter = 35,
+    // Status bar — fixed height, always pinned to the bottom edge
+    constexpr int16_t statusH    = 16;
 
-    .egtCht = { 5, 205, 310, 165 },
+    // Arc sprites: two identical arcs stacked vertically (RPM on top, MAP below).
+    // Same width, same radii. arcX is the left edge (independent of borderH so
+    // arcs can shift without affecting the EGT/CHT or bottom-bar alignment).
+    constexpr int16_t arcX       = -6;
+    constexpr int16_t arcW       = 205;
+    constexpr int16_t arcH       = 90;
+    constexpr int16_t arcOuterR  = 75;
+    constexpr int16_t arcInnerR  = 70;
+    // RPM arc opens downward (standard); MAP arc is inverted (opens upward).
+    constexpr float   rpmStartAngle = 182.0f;
+    constexpr float   rpmEndAngle   = 358.0f;
+    constexpr int16_t rpmLabelY     = 25;
+    constexpr float   mapStartAngle = 178.0f;
+    constexpr float   mapEndAngle   = 2.0f;
+    constexpr int16_t mapLabelY     = 42;
 
-    .barX = 220, .barY = -30, .barMaxY = 380, .barW = 80, .barH = 35, .barYSpacing = 34,
+    // HBar column (top-right). Tuned independently of arc width.
+    constexpr int16_t hbarX        = 220;   // left edge of HBar column
+    constexpr int16_t hbarW        = 80;    // width of HBar sprites
+    constexpr int16_t hbarH        = 35;    // sprite height per bar
+    constexpr int16_t hbarYSpacing = 33;    // vertical spacing between bars
+    // First bar's top edge target — bars are positioned at
+    //   barY + (i+1) * barYSpacing, so barY = hbarTopY - barYSpacing.
+    constexpr int16_t hbarTopY     = 3;
 
-    .bottomBar = { 5, 380, 310, 45 },
+    // EGT/CHT cluster — Y and H tuned directly; X/W derive from screen border.
+    constexpr int16_t egtChtY      = 205;
+    constexpr int16_t egtChtH      = 165;
 
-    .statusBar     = { 0, 430, 320, 16 },
-    .statusVertical = false,
-    .stepLabelPos  = 70,  .lfLabelPos = 250,
+    // Bottom bar height. Y is derived (centered between EGT/CHT bottom and
+    // top of status bar).
+    constexpr int16_t bottomBarH   = 45;
 
-    .debugY = 465,
+    // %HP value gauge — upper-left corner and size. Overlaps the lower-left
+    // of the MAP arc sprite; the cutout is configured below.
+    constexpr int16_t hpX          = 2;
+    constexpr int16_t hpY          = 175;
+    constexpr int16_t hpW          = 80;
+    constexpr int16_t hpH          = 20;
+    constexpr int16_t hpGapCenter  = 35;
 
-    .staticLines = { { 6, 93, 163, 93 } },
-    .numStaticLines = 1,
-};
+    // Status bar label positions (along the bar)
+    constexpr int16_t stepLabelPos = 70;
+    constexpr int16_t lfLabelPos   = 250;
+
+    // =======================================================================
+    // DERIVED VALUES — computed from the above
+    // =======================================================================
+
+    // Arcs: stacked vertically. arcX is set in the tunables block above.
+    constexpr int16_t rpmY     = borderV;             // top of RPM sprite
+    constexpr int16_t mapY     = rpmY + arcH;         // MAP directly below RPM
+    constexpr int16_t arcCx    = arcW / 2;            // both arcs centered horizontally in sprite
+    // RPM arc: center near the bottom of its sprite (arc opens downward)
+    constexpr int16_t rpmCy    = arcH - 5;
+    // MAP arc: center near the top of its sprite (inverted, opens upward)
+    constexpr int16_t mapCy    = 2;
+
+    // EGT/CHT: full usable width
+    constexpr int16_t egtChtX  = borderH;
+    constexpr int16_t egtChtW  = SCREEN_W - 2 * borderH;
+
+    // Status bar: full width at the very bottom, ignores borders
+    constexpr int16_t statusY  = SCREEN_H - statusH;
+
+    // Bottom bar: centered vertically in the gap between EGT/CHT and status bar
+    constexpr int16_t bbGapTop = egtChtY + egtChtH;
+    constexpr int16_t bbGapH   = statusY - bbGapTop;
+    constexpr int16_t bbY      = bbGapTop + (bbGapH - bottomBarH) / 2;
+    constexpr int16_t bbX      = borderH;
+    constexpr int16_t bbW      = SCREEN_W - 2 * borderH;
+
+    // HBar setup: convert "top of first bar" to the barY sentinel that
+    // setupRightBars() expects: bar i is at barY + (i+1) * spacing.
+    constexpr int16_t hbarBarY = hbarTopY - hbarYSpacing;
+    // Cap HBars at the top of EGT/CHT so they don't bleed into that area.
+    constexpr int16_t hbarMaxY = egtChtY;
+
+    // Debug overlay: just above the status bar
+    constexpr int16_t debugY   = statusY - 15;
+
+    // %HP cutout: the overlay sits on top of the MAP arc sprite (lower-left
+    // corner, since the MAP arc is inverted and that corner is empty space).
+    // We carve a transparent rect in the MAP sprite the size of the overlay,
+    // clipped to the sprite's bounds. RPM sprite needs no cutout in portrait.
+    constexpr int16_t mapCutX  = (hpX > arcX)            ? (hpX - arcX)        : 0;
+    constexpr int16_t mapCutY  = (hpY > mapY)            ? (hpY - mapY)        : 0;
+    constexpr int16_t mapCutXEnd = (hpX + hpW < arcX + arcW) ? (hpX + hpW - arcX) : arcW;
+    constexpr int16_t mapCutYEnd = (hpY + hpH < mapY + arcH) ? (hpY + hpH - mapY) : arcH;
+    constexpr int16_t mapCutW  = mapCutXEnd - mapCutX;
+    constexpr int16_t mapCutH  = mapCutYEnd - mapCutY;
+
+    // =======================================================================
+    // BUILD THE LAYOUT
+    // =======================================================================
+    GaugeLayout L = {};
+
+    L.screenW  = SCREEN_W;
+    L.screenH  = SCREEN_H;
+    L.rotation = 0;
+
+    // RPM arc (top) — no overlay sits on it in portrait
+    L.rpm         = { arcX, rpmY, arcW, arcH };
+    L.rpmArc      = { arcCx, rpmCy, arcOuterR, arcInnerR,
+                      rpmStartAngle, rpmEndAngle, rpmLabelY };
+    L.rpmHpCutout = { 0, 0, 0, 0 };
+
+    // MAP arc (below RPM, inverted) — %HP overlay lives in its lower-left
+    L.map         = { arcX, mapY, arcW, arcH };
+    L.mapArc      = { arcCx, mapCy, arcOuterR, arcInnerR,
+                       mapStartAngle, mapEndAngle, mapLabelY };
+    L.mapInverted = true;
+    L.mapHpCutout = { mapCutX, mapCutY, mapCutW, mapCutH };
+
+    // %HP overlay
+    L.hpPct       = { hpX, hpY, hpW, hpH };
+    L.hpGapCenter = hpGapCenter;
+
+    // EGT/CHT
+    L.egtCht = { egtChtX, egtChtY, egtChtW, egtChtH };
+
+    // HBars
+    L.barX        = hbarX;
+    L.barY        = hbarBarY;
+    L.barMaxY     = hbarMaxY;
+    L.barW        = hbarW;
+    L.barH        = hbarH;
+    L.barYSpacing = hbarYSpacing;
+
+    // Bottom bar
+    L.bottomBar = { bbX, bbY, bbW, bottomBarH };
+
+    // Status bar (full width, no border)
+    L.statusBar      = { 0, statusY, SCREEN_W, statusH };
+    L.statusVertical = false;
+    L.stepLabelPos   = stepLabelPos;
+    L.lfLabelPos     = lfLabelPos;
+
+    L.debugY = debugY;
+
+    // No static separator lines in portrait
+    L.numStaticLines = 0;
+
+    return L;
+}
+
+static constexpr GaugeLayout LAYOUT_PORTRAIT = buildPortrait();
 
 // ===========================================================================
 // LAYOUT_LANDSCAPE — 480x320, built from key boundaries.
@@ -208,7 +348,7 @@ static constexpr GaugeLayout buildLandscape() {
     constexpr int16_t egtChtW  = contentW;
 
     // Bottom bar: below EGT/CHT, same width as content area
-    constexpr int16_t bbY      = egtChtY + egtChtH;
+    constexpr int16_t bbY      = egtChtY + egtChtH + 15;  // Should probably center this in the available space.
     constexpr int16_t bbW      = contentW;
 
     // %HP: centered between the two arc labels
@@ -233,16 +373,19 @@ static constexpr GaugeLayout buildLandscape() {
     L.screenH  = SCREEN_H;
     L.rotation = 1;
 
-    // RPM arc
-    L.rpm    = { rpmX, 0, arcW, arcH };
-    L.rpmArc = { arcCx, arcCy, arcOuterR, arcInnerR,
-                 arcStartAngle, arcEndAngle, arcLabelY };
+    // RPM arc — %HP overlay sits centered at the top between the two arcs,
+    // so each arc carves its inner top corner transparent.
+    L.rpm         = { rpmX, 0, arcW, arcH };
+    L.rpmArc      = { arcCx, arcCy, arcOuterR, arcInnerR,
+                      arcStartAngle, arcEndAngle, arcLabelY };
+    L.rpmHpCutout = { arcW - 40, 0, 40, 25 };  // top-right corner
 
     // MAP arc — same geometry, not inverted
     L.map         = { mapX, 0, arcW, arcH };
     L.mapArc      = { arcCx, arcCy, arcOuterR, arcInnerR,
                        arcStartAngle, arcEndAngle, arcLabelY };
     L.mapInverted = false;
+    L.mapHpCutout = { 0, 0, 40, 25 };          // top-left corner
 
     // %HP
     L.hpPct       = { hpX, hpY, hpW, hpH };

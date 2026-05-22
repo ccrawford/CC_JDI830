@@ -97,8 +97,8 @@ class BottomBar : public Gauge {
     uint32_t        _alarmFlashTime = 0;         // millis() when current flash phase started
 
     // Flash timing: label is visible for 700ms, hidden for 300ms
-    static constexpr uint32_t FLASH_ON_MS  = 700;
-    static constexpr uint32_t FLASH_OFF_MS = 300;
+    static constexpr uint32_t FLASH_ON_MS  = 400;
+    static constexpr uint32_t FLASH_OFF_MS = 150;
 
 protected:
     // drawAlarm is implemented in BottomBarPages.hpp (after AlarmDef is

@@ -45,6 +45,15 @@ inline float greenUpperBound(const GaugeRangeDef& range) {
     return 0;
 }
 
+// --- Helper: lower bound of the GREEN band (.min of first GREEN) ---
+inline float greenLowerBound(const GaugeRangeDef& range) {
+    for (uint8_t i = 0; i < range.colorCount; i++) {
+        if (range.colors[i].color == TFT_GREEN)
+            return range.colors[i].min;
+    }
+    return 0;
+}
+
 // --- Helper: is value in a RED band ABOVE the green range? ---
 // For alarms like "high oil temp" where there are RED bands on both
 // ends but only the upper one should trigger this alarm entry.
@@ -74,6 +83,56 @@ inline bool isInRedLow(float value, const GaugeRangeDef& range) {
         }
     }
     return false;
+}
+
+// Hysteresis margin as a fraction of the green-band span.  Once an alarm
+// has tripped, the value must retreat *past* the red/green boundary by
+// this much before the alarm clears — kills boundary flicker without
+// noticeably delaying real alarm clearance.  3% of green span ≈ a few
+// tenths of a volt for the BAT range or a few degrees for OIL temp.
+static constexpr float kAlarmHysteresisFraction = 0.03f;
+
+// --- Hysteresis-aware versions of the IN_RED* checks ---
+// `tripped` is the alarm's current latch state.  Returns the new latch
+// state (true = alarm is active this frame).
+//
+// When tripped == false: identical to isInRed*() — alarm trips the moment
+// the value enters a RED band.
+// When tripped == true: alarm stays on until the value retreats past the
+// boundary by kAlarmHysteresisFraction × green-band-span.
+inline bool checkInRedHigh(float value, const GaugeRangeDef& range, bool tripped) {
+    if (!tripped) return isInRedHigh(value, range);
+    // Already tripped on the high side — clear only when we drop below
+    // the green/red boundary minus the hysteresis margin.
+    float greenMax = greenUpperBound(range);
+    float margin = (greenMax - greenLowerBound(range)) * kAlarmHysteresisFraction;
+    return value >= (greenMax - margin);
+}
+
+inline bool checkInRedLow(float value, const GaugeRangeDef& range, bool tripped) {
+    if (!tripped) return isInRedLow(value, range);
+    float greenMin = greenLowerBound(range);
+    float margin = (greenUpperBound(range) - greenMin) * kAlarmHysteresisFraction;
+    return value <= (greenMin + margin);
+}
+
+// IN_RED can fire from either side; once tripped, stay on until we're
+// firmly back inside green (margin from BOTH boundaries).
+inline bool checkInRed(float value, const GaugeRangeDef& range, bool tripped) {
+    if (!tripped) return isInRed(value, range);
+    float greenMin = greenLowerBound(range);
+    float greenMax = greenUpperBound(range);
+    float margin = (greenMax - greenMin) * kAlarmHysteresisFraction;
+    // Cleared only when value sits inside green with margin on each side
+    return !(value > greenMin + margin && value < greenMax - margin);
+}
+
+// ABOVE_REDLINE — 1% margin under redline before clearing.  Redline values
+// are large (e.g. 460°F for CHT, 1650°F for TIT) so 1% is several degrees.
+inline bool checkAboveRedline(float value, const GaugeRangeDef& range, bool tripped) {
+    if (range.redline <= 0) return false;
+    if (!tripped) return value >= range.redline;
+    return value >= range.redline * 0.99f;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,10 +179,24 @@ struct AlarmDef {
     // --- Mutable runtime state ---
     DismissState         dismiss      = DismissState::ACTIVE;
     uint32_t             reactivateAt = 0;  // millis() timestamp for TIMED dismiss
+
+    // Schmitt-trigger latch: once an alarm trips, it remains tripped until
+    // the value has retreated past the threshold by a hysteresis margin.
+    // Prevents flicker when a value sits right on a boundary (jittery
+    // sim signals or values smoothed to within a hair of the limit).
+    bool                 tripped      = false;
 };
 
 static constexpr int MAX_ALARMS = 13;
 static constexpr uint32_t DISMISS_DURATION_MS = 600000;  // 10 minutes
+
+// Startup grace period.  For this long after power-on or profile switch,
+// scan() returns false unconditionally — gauges are still ramping up from
+// 0 (smoothing settle) and would otherwise trip spurious low alarms (low
+// battery, low oil temp/pressure, etc.).  Mirrors real EMS behavior: the
+// JPI EDM830 hides values entirely for its first few seconds of boot.
+// This will be folded into the proper startup-sequence display later.
+static constexpr uint32_t ALARM_STARTUP_GRACE_MS = 5000;
 
 // ---------------------------------------------------------------------------
 // AlarmManager — scans alarm table each frame, tracks dismiss state.
@@ -132,6 +205,8 @@ class AlarmManager {
     AlarmDef _alarms[MAX_ALARMS];
     int      _numAlarms       = 0;
     int      _activeAlarmIndex = -1;   // index of currently firing alarm, -1 = none
+    uint32_t _graceStartMs    = 0;     // millis() at start of current grace window
+    bool     _graceActive     = false; // true while we're inside the grace window
 
 public:
     // -----------------------------------------------------------------
@@ -148,9 +223,20 @@ public:
     // the surrounding scope — the compiler turns them into a small
     // struct with an operator() under the hood.
     // -----------------------------------------------------------------
+    // Start (or restart) the post-power-on / post-profile-switch grace
+     // window.  scan() will return false until this expires.  Called
+    // automatically from buildAlarms(), which itself is called on init
+    // and profile switch — so callers usually don't need to invoke this
+    // directly.
+    void beginGracePeriod(uint32_t now) {
+        _graceStartMs = now;
+        _graceActive  = true;
+    }
+
     void buildAlarms(const PlaneProfile& prof, EngineState& state) {
         _numAlarms = 0;
         _activeAlarmIndex = -1;
+        beginGracePeriod(millis());
 
         auto add = [&](const char* label, const float* val,
                        const GaugeRangeDef* range, const bool* avail,
@@ -159,7 +245,7 @@ public:
             if (*avail && _numAlarms < MAX_ALARMS) {
                 _alarms[_numAlarms++] = {
                     label, val, range, avail, check, dec, timeFmt, cyl,
-                    DismissState::ACTIVE, 0
+                    DismissState::ACTIVE, 0, false
                 };
             }
         };
@@ -174,8 +260,8 @@ public:
         add("OIL",    &state.oilT,     &prof.oilT,      &prof.hasOilT,     AlarmCheck::IN_RED_LOW,    0);
         add("CLD",    &state.coldRate, &prof.coldRate,   &prof.hasColdRate, AlarmCheck::IN_RED,        0);
         add("DIF",    &state.dif,      &prof.dif,       &prof.hasDif,      AlarmCheck::IN_RED,        0);
-        add("BAT",    &state.bat,      &prof.bat,       &prof.hasBat,      AlarmCheck::IN_RED_HIGH,   1);
-        add("BAT",    &state.bat,      &prof.bat,       &prof.hasBat,      AlarmCheck::IN_RED_LOW,    1);
+        add("VOLTS",    &state.bat,      &prof.bat,       &prof.hasBat,      AlarmCheck::IN_RED_HIGH,   1);
+        add("VOLTS",    &state.bat,      &prof.bat,       &prof.hasBat,      AlarmCheck::IN_RED_LOW,    1);
         add("MAP",    &state.map,      &prof.map,       &prof.hasMap,      AlarmCheck::IN_RED,        1);
         add("O-P",    &state.oilP,     &prof.oilP,      &prof.hasOilP,     AlarmCheck::IN_RED,        0);
         add("LO REM", &state.fuelRem, &prof.fuelRem,    &prof.hasFuelRem,  AlarmCheck::IN_RED_LOW,    1);
@@ -194,6 +280,17 @@ public:
     // -----------------------------------------------------------------
     bool scan(uint32_t now) {
         _activeAlarmIndex = -1;
+
+        // Startup grace: ignore all alarms while smoothed values are
+        // still ramping up from 0.  Once the window closes, clear the
+        // flag and proceed normally.  Don't reset hysteresis latches
+        // here — they're already false from buildAlarms().
+        if (_graceActive) {
+            if (now - _graceStartMs < ALARM_STARTUP_GRACE_MS) {
+                return false;
+            }
+            _graceActive = false;
+        }
 
         for (int i = 0; i < _numAlarms; i++) {
             AlarmDef& a = _alarms[i];
@@ -214,27 +311,35 @@ public:
             float val = *a.valuePtr;
             bool alarming = false;
 
+            // Hysteresis: each check*() consults a.tripped to decide
+            // whether to apply the wider "clear" threshold or the normal
+            // "trip" threshold.  We update a.tripped with the result so
+            // the next frame sees the new latch state.
             switch (a.check) {
                 case AlarmCheck::IN_RED:
-                    alarming = isInRed(val, *a.range);
+                    alarming = checkInRed(val, *a.range, a.tripped);
                     break;
                 case AlarmCheck::IN_RED_HIGH:
-                    alarming = isInRedHigh(val, *a.range);
+                    alarming = checkInRedHigh(val, *a.range, a.tripped);
                     break;
                 case AlarmCheck::IN_RED_LOW:
-                    alarming = isInRedLow(val, *a.range);
+                    alarming = checkInRedLow(val, *a.range, a.tripped);
                     break;
                 case AlarmCheck::ABOVE_REDLINE:
-                    alarming = (a.range->redline > 0) && (val >= a.range->redline);
+                    alarming = checkAboveRedline(val, *a.range, a.tripped);
                     break;
             }
+            a.tripped = alarming;
 
-            if (alarming) {
+            // Highest priority wins for the *displayed* alarm, but keep
+            // scanning so every lower-priority alarm's hysteresis latch
+            // still gets updated this frame.  Otherwise a masked alarm
+            // could stay tripped forever.
+            if (alarming && _activeAlarmIndex < 0) {
                 _activeAlarmIndex = i;
-                return true;    // highest priority wins — stop scanning
             }
         }
-        return false;
+        return _activeAlarmIndex >= 0;
     }
 
     // --- Accessors for the currently active alarm ---

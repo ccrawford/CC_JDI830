@@ -1,6 +1,80 @@
 #pragma once
 
 #include <algorithm>   // std::max_element, std::min_element
+#include <math.h>      // lroundf
+
+// ---------------------------------------------------------------------------
+// emaStep — one step of an exponential moving average, with optional
+// "snap" escape for large excursions.
+//
+// alpha ∈ (0, 1].  Higher alpha = more responsive (less smoothing);
+// lower alpha = smoother (slower to track).  Call once per frame.
+//
+// snapDelta: if |raw - smoothed| exceeds this, bypass the EMA and just
+// copy raw into smoothed.  This avoids the ugly slow-ramp behavior when
+// the source makes a real, deliberate jump (throttle snap, profile
+// switch, gauge sweeping up from 0 at boot, etc.) and prevents the
+// displayed value from missing every intermediate reading during the
+// ramp.  Pass 0 (or a very large number) to disable snapping.
+//
+// `float&` is a C++ reference — like a pointer that can't be null and
+// can't be rebound.  Compiles down to the same code as `float*` but
+// reads more naturally for in-place modification.  `inline` lets the
+// compiler drop this directly into each call site with zero call
+// overhead — critical on RP2350 where we run it ~20× per frame.
+// ---------------------------------------------------------------------------
+inline void emaStep(float& smoothed, float raw, float alpha, float snapDelta = 0.0f) {
+    // fabsf is the float-flavored absolute value.  Using the float variant
+    // (not fabs, which is double) avoids a hidden float→double→float
+    // round-trip on the Cortex-M33 — cheap, but free is cheaper.
+    if (snapDelta > 0.0f && fabsf(raw - smoothed) > snapDelta) {
+        smoothed = raw;
+        return;
+    }
+    smoothed += alpha * (raw - smoothed);
+}
+
+// ---------------------------------------------------------------------------
+// SmoothingAlpha — per-parameter EMA strengths.
+//
+// `static constexpr float` at struct scope = compile-time constant with
+// no storage cost (better than #define: type-safe, scoped, debuggable).
+// Tuned for ~10 Hz update rate.  Settle-to-95% rough rule of thumb:
+//   alpha 0.05 → ~1 s   alpha 0.15 → ~300 ms   alpha 0.30 → ~150 ms
+// ---------------------------------------------------------------------------
+struct SmoothingAlpha {
+    static constexpr float bat   = 0.05f;   // voltage barely moves in real life
+    static constexpr float rpm   = 0.35f;   // pilot expects RPM to track throttle
+    static constexpr float map   = 0.30f;
+    static constexpr float oilT  = 0.05f;   // slow thermal mass
+    static constexpr float oilP  = 0.15f;
+    static constexpr float ff    = 0.20f;
+    static constexpr float egt   = 0.15f;
+    static constexpr float cht   = 0.10f;
+    static constexpr float tit   = 0.15f;
+    static constexpr float oat   = 0.05f;
+    static constexpr float misc  = 0.15f;   // crb / cdt / iat
+};
+
+// Per-parameter snap thresholds.  If the gap between raw and smoothed
+// exceeds this, emaStep() abandons the gradual blend and snaps directly
+// to the raw value.  Tuned to be larger than any real-world jitter but
+// smaller than a "deliberate" change (throttle snap, profile switch,
+// power-on ramp from 0).  Order of magnitude rule of thumb: ~10× the
+// expected noise amplitude on each signal.
+struct SmoothingSnap {
+    static constexpr float bat   =   3.0f;   // volts — anything >3V off is a real event
+    static constexpr float rpm   = 300.0f;
+    static constexpr float map   =   5.0f;   // inHg
+    static constexpr float oilT  =  40.0f;   // °F
+    static constexpr float oilP  =  20.0f;   // psi
+    static constexpr float ff    =   5.0f;   // gph
+    static constexpr float egt   = 200.0f;   // °F
+    static constexpr float cht   = 100.0f;   // °F
+    static constexpr float tit   = 200.0f;   // °F
+    static constexpr float oat   =  20.0f;   // °C
+    static constexpr float misc  =  40.0f;   // crb / cdt / iat — °F
+};
 
 // ---------------------------------------------------------------------------
 // EngineState — all engine parameters in one place.
@@ -14,32 +88,63 @@
 struct EngineState {
     static constexpr int MAX_CYLINDERS = 6;
 
-    float egt[MAX_CYLINDERS] = {1462, 1396, 1500, 1401, 1199, 1466};   // Engine gas temp for cylinders
-    float cht[MAX_CYLINDERS] = {313,  312,  395,  314,  320,  386};    // Cylinder Head Temp for all cylinders
-    float tit1        = 1535;   // Turbine Inlet Temp #1
-    float tit2        = 1500;   // Turbine Inlet Temp #2
-    float oilT   = 129;    // Oil Temp
-    float oilP   = 64;     // Oil Pressure
-    bool  isCold = false;   // CHT cooling rate (deg/min) CALCULATED
-    float coldRate = 0.0;   // deg/min cooling CALCULATED
-    float bat    = 25.1f;  // Battery Volts
-    float oat    = 18;  // Outside Air Temp (C)
-    float dif    = 40;  // Hottest minus coldest EGT CALCULATED
-    float crb    = 40;  // Carburator Air Temp (only allowed if IAT not present)
-    float cdt    = 145;  // COmpressor Discharge Temp (only allowed if CRB not present)
-    float iat    = 145;  // Intercooler Air Temp
-    float cdtLessIat    = -45;  // Intercooler cooling CALCULATED
-    float rpm    = 2570;   // Engine RPM
-    float map    = 26.3f;  // Engine Manifold Pressure inHg
-    float fuelRem = 58.9f;  // Calculated fuel remaining
-    float waypointDist = 0;  // Distnace to next Waypoint (input)
-    float req = 12.7f;  // Calculated fuel required to waypoint CALCULATED
-    float res = 55.2f;  // Calculated fuel reserve at waypoint CALCULATED
-    float mpg    = 16.0f;   // Miles per gallon passed in.
-    float endurance = 185;   // Endurance in minutes time remaining until fuel exhaustion CALCULATED
-    float ff    = 16.0f;   // Fuel Flow Gallons per hour
-    float used   = 7.2;     // Calculated fuel used (gallons)
-    float fuelCapacity = 60.0f;  // Total usable fuel (gallons) — reported by sim
+    // ---- Smoothed (display) values -------------------------------------
+    // These are what gauges, alarms, peak detection, lean-find, and the
+    // bottom bar all read.  Updated once per frame in updateCalculated()
+    // by EMA-blending the matching *Raw value.  Default 0 so the gauges
+    // ramp up from rest on power-on (looks like a real instrument booting).
+    float egt[MAX_CYLINDERS] = {0};   // Engine gas temp per cylinder (smoothed)
+    float cht[MAX_CYLINDERS] = {0};   // Cylinder head temp per cylinder (smoothed)
+    float tit1   = 0;     // Turbine Inlet Temp #1 (smoothed)
+    float tit2   = 0;     // Turbine Inlet Temp #2 (smoothed)
+    float oilT   = 0;     // Oil Temp (smoothed)
+    float oilP   = 0;     // Oil Pressure (smoothed)
+    bool  isCold = false; // CHT cooling rate triggered (CALCULATED)
+    float coldRate = 0.0; // deg/min cooling (CALCULATED)
+    float bat    = 0;     // Battery Volts (smoothed)
+    float oat    = 0;     // Outside Air Temp (smoothed)
+    float dif    = 0;     // Hottest minus coldest EGT (CALCULATED)
+    float crb    = 0;     // Carburator Air Temp (smoothed)
+    float cdt    = 0;     // Compressor Discharge Temp (smoothed)
+    float iat    = 0;     // Intercooler Air Temp (smoothed)
+    float cdtLessIat = 0; // Intercooler cooling (CALCULATED)
+    float rpm    = 0;     // Engine RPM (smoothed, rounded to nearest 10 for display)
+    float rpmSmoothedExact = 0;  // un-rounded EMA accumulator — kept separate so
+                                 // the round-to-10 doesn't quantize the smoothing
+                                 // back into itself and freeze the gauge.
+    float map    = 0;     // Engine Manifold Pressure inHg (smoothed)
+    float ff     = 0;     // Fuel Flow GPH (smoothed)
+
+    // ---- Raw values written directly by CC_JDI830::set() ---------------
+    // These hold the most recent MobiFlight input.  updateCalculated()
+    // blends each into the corresponding smoothed field every frame.
+    // Per-cylinder EGT/CHT raws are written by set() (when the sim sends
+    // per-cylinder data) or by spreadCylinders() (when the sim sends only
+    // a single value and we synthesize per-cylinder variation).
+    float egtRawPerCyl[MAX_CYLINDERS] = {0};
+    float chtRawPerCyl[MAX_CYLINDERS] = {0};
+    float tit1Raw = 0;
+    float tit2Raw = 0;
+    float oilTRaw = 0;
+    float oilPRaw = 0;
+    float batRaw  = 0;
+    float oatRaw  = 0;
+    float crbRaw  = 0;
+    float cdtRaw  = 0;
+    float iatRaw  = 0;
+    float rpmRaw  = 0;
+    float mapRaw  = 0;
+    float ffRaw   = 0;
+
+    // ---- Fuel / range fields (not smoothed — change slowly already) -----
+    float fuelRem = 0;       // Fuel remaining (gallons) — reported by sim
+    float waypointDist = 0;  // Distance to next waypoint (NM)
+    float req = 0;           // Fuel required to waypoint (CALCULATED)
+    float res = 0;           // Fuel reserve at waypoint (CALCULATED)
+    float mpg = 0;           // Miles per gallon (input)
+    float endurance = 0;     // Minutes of fuel remaining (CALCULATED)
+    float used   = 0;        // Fuel used (gallons) — reported by sim
+    float fuelCapacity = 0;  // Total usable fuel (gallons) — reported by sim
     float egtPeak    = 0;   // Calculated
     int   egtPeakCyl = 0;   // Calculated
     float chtPeak    = 0;   // Calculated
@@ -90,6 +195,44 @@ struct EngineState {
     // to know about profiles at all.
     // -----------------------------------------------------------------
     void updateCalculated(int numCylinders) {
+        // --- Smoothing pass --------------------------------------------
+        // Blend each *Raw value (most recent MobiFlight input) into the
+        // matching smoothed field.  Done first so all downstream peak/
+        // dif/lean/alarm logic operates on smoothed values consistently.
+        //
+        // Per-cylinder EGT/CHT raws come either from set() writing real
+        // sim values directly, or from spreadCylinders() writing synthetic
+        // ones based on egtRaw/chtRaw.  Either way, they're already in
+        // egtRawPerCyl[] / chtRawPerCyl[] by the time we get here.
+        for (int i = 0; i < numCylinders; i++) {
+            emaStep(egt[i], egtRawPerCyl[i], SmoothingAlpha::egt, SmoothingSnap::egt);
+            emaStep(cht[i], chtRawPerCyl[i], SmoothingAlpha::cht, SmoothingSnap::cht);
+        }
+        emaStep(tit1, tit1Raw, SmoothingAlpha::tit,  SmoothingSnap::tit);
+        emaStep(tit2, tit2Raw, SmoothingAlpha::tit,  SmoothingSnap::tit);
+        emaStep(oilT, oilTRaw, SmoothingAlpha::oilT, SmoothingSnap::oilT);
+        emaStep(oilP, oilPRaw, SmoothingAlpha::oilP, SmoothingSnap::oilP);
+        emaStep(bat,  batRaw,  SmoothingAlpha::bat,  SmoothingSnap::bat);
+        emaStep(oat,  oatRaw,  SmoothingAlpha::oat,  SmoothingSnap::oat);
+        emaStep(crb,  crbRaw,  SmoothingAlpha::misc, SmoothingSnap::misc);
+        emaStep(cdt,  cdtRaw,  SmoothingAlpha::misc, SmoothingSnap::misc);
+        emaStep(iat,  iatRaw,  SmoothingAlpha::misc, SmoothingSnap::misc);
+        // RPM smoothing happens on a separate un-rounded accumulator so
+        // the round-to-10 doesn't feed back into the EMA and stall the
+        // value.  (If we EMA-blended `rpm` directly and then rounded it,
+        // each frame's small fractional progress would get snapped away
+        // and the gauge would lock at a multiple of 10 even when the
+        // raw value is offset — e.g. raw=1031 → smoothed stuck at 1020.)
+        //
+        // lroundf() rounds to nearest (away from zero on .5).  We use it
+        // instead of `(int)(x + 0.5f)` because float storage of e.g.
+        // 2350.0f can be 2349.9999..., and the int-cast in ArcGauge's
+        // drawNumber() truncates — producing 2349 on the display.
+        emaStep(rpmSmoothedExact, rpmRaw, SmoothingAlpha::rpm, SmoothingSnap::rpm);
+        rpm = lroundf(rpmSmoothedExact / 10.0f) * 10.0f;
+        emaStep(map,  mapRaw,  SmoothingAlpha::map, SmoothingSnap::map);
+        emaStep(ff,   ffRaw,   SmoothingAlpha::ff,  SmoothingSnap::ff);
+
         // --- EGT peak & differential ---
         auto egtMax = std::max_element(egt, egt + numCylinders);
         auto egtMin = std::min_element(egt, egt + numCylinders);
@@ -106,7 +249,7 @@ struct EngineState {
         cdtLessIat = cdt - iat;
 
         // --- Fuel calculations ---
-        used = fuelCapacity - fuelRem;
+        // used = fuelCapacity - fuelRem;
 
         if (ff > 0.01f) {
             endurance = (fuelRem / ff) * 60.0f;   // minutes
@@ -264,12 +407,14 @@ struct EngineState {
                 if (chtDrift[i] < 0.1f && chtDrift[i] > -0.1f) chtDrift[i] = 0;
             }
 
-            // Final value = peak minus fixed personality offset + drift
+            // Final value = peak minus fixed personality offset + drift.
+            // Write into the *raw* per-cylinder arrays — the EMA pass in
+            // updateCalculated() will smooth them into egt[]/cht[] next.
             float egtOffset = reportedEgt * spreadPct * personality[i];
-            egt[i] = reportedEgt - egtOffset + egtDrift[i];
+            egtRawPerCyl[i] = reportedEgt - egtOffset + egtDrift[i];
 
             float chtOffset = reportedCht * spreadPct * personality[i];
-            cht[i] = reportedCht - chtOffset + chtDrift[i];
+            chtRawPerCyl[i] = reportedCht - chtOffset + chtDrift[i];
         }
     }
 };

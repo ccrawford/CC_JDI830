@@ -71,17 +71,20 @@ struct DisplayConfig {
 // Later, a buildConfig(profile, userPrefs) overload can layer in user
 // choices on top of these defaults.
 // ---------------------------------------------------------------------------
-inline DisplayConfig buildDefaultConfig(const PlaneProfile& profile) {
+inline DisplayConfig buildDefaultConfig(const PlaneProfile& profile,
+                                       LayoutMode mode = LayoutMode::PORTRAIT) {
     DisplayConfig cfg;
 
-    // Select layout based on compile-time flag
-#ifdef USE_LANDSCAPE
-    cfg.layoutMode = LayoutMode::LANDSCAPE;
-    cfg.layout     = &LAYOUT_LANDSCAPE;
-#else
-    cfg.layoutMode = LayoutMode::PORTRAIT;
-    cfg.layout     = &LAYOUT_PORTRAIT;
-#endif
+    // Select layout at runtime — MobiFlight can switch via setLayout().
+    // The compile-time USE_LANDSCAPE flag (if defined) now only sets the
+    // initial boot default in CC_JDI830::begin().
+    if (mode == LayoutMode::LANDSCAPE) {
+        cfg.layoutMode = LayoutMode::LANDSCAPE;
+        cfg.layout     = &LAYOUT_LANDSCAPE;
+    } else {
+        cfg.layoutMode = LayoutMode::PORTRAIT;
+        cfg.layout     = &LAYOUT_PORTRAIT;
+    }
 
     // Seed right-bar positioning and EGT/CHT width from the active layout.
     // These are the defaults for 6-cyl; compact (4-cyl) overrides below.
