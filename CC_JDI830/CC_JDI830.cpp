@@ -245,20 +245,6 @@ void CC_JDI830::drawStatic() {
     }
 }
 
-#if defined(ESP_PLATFORM)
-CC_JDI830::CC_JDI830(uint8_t sclk, uint8_t d0, uint8_t d1, uint8_t d2, uint8_t d3,
-                     uint8_t cs, uint8_t rst, uint8_t bl)
-{
-    _pinSCLK = sclk;
-    _pinD0   = d0;
-    _pinD1   = d1;
-    _pinD2   = d2;
-    _pinD3   = d3;
-    _pinCS   = cs;
-    _pinRST  = rst;
-    _pinBL   = bl;
-}
-#else
 CC_JDI830::CC_JDI830(uint8_t sclk, uint8_t mosi, uint8_t dc, uint8_t cs, uint8_t rst, uint8_t bl)
 {
     _pinSCLK = sclk;
@@ -268,24 +254,13 @@ CC_JDI830::CC_JDI830(uint8_t sclk, uint8_t mosi, uint8_t dc, uint8_t cs, uint8_t
     _pinRST  = rst;
     _pinBL   = bl;
 }
-#endif
 
 void CC_JDI830::begin()
 {
-#if !defined(ESP_PLATFORM)
     _lcd.configurePins(_pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL);
-#endif
-
     _lcd.init();
-    Serial.printf("begin: w=%d h=%d\n", _lcd.width(), _lcd.height());
-
-#if !defined(ESP_PLATFORM)
     _lcd.setBrightness(255);
-#endif
-
-    Serial.println("begin: fillScreen BLACK");
     _lcd.fillScreen(TFT_BLACK);
-    Serial.println("begin: fillScreen done");
 
     setProfile(0);
 
@@ -766,10 +741,5 @@ void CC_JDI830::update()
 
     // Debug overlay — shows mode, gesture, button state, connection status.
     // drawDebugState(gesture);
-
-#if defined(ESP_PLATFORM)
-    // Flush the Arduino_Canvas framebuffer to the physical display.
-    _lcd.flush();
-#endif
 }
 

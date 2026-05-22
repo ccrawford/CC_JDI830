@@ -2,12 +2,7 @@
 
 #include "Arduino.h"
 
-// Display hardware — ESP32-S3 uses the QSPI AXS15231B driver, RP2350 uses SPI ILI9488
-#if defined(ESP_PLATFORM)
-#include "35qspiaxs15231b_esp32s3.h"
-#else
 #include "35tftspi480x320.h"
-#endif
 
 // Display setup
 #include "DisplayConfig.hpp"
@@ -116,12 +111,7 @@ enum class LeanPhase : uint8_t {
 class CC_JDI830
 {
 public:
-#if defined(ESP_PLATFORM)
-    CC_JDI830(uint8_t SCLK, uint8_t D0, uint8_t D1, uint8_t D2, uint8_t D3,
-              uint8_t CS, uint8_t RST, uint8_t BL);
-#else
     CC_JDI830(uint8_t SCLK, uint8_t MOSI, uint8_t DC, uint8_t CS, uint8_t RST, uint8_t BL);
-#endif
     void begin();
     void attach();
     void detach();
@@ -150,11 +140,7 @@ public:
 
 private:
     bool    _initialised;
-#if defined(ESP_PLATFORM)
-    uint8_t _pinSCLK, _pinD0, _pinD1, _pinD2, _pinD3, _pinCS, _pinRST, _pinBL;
-#else
     uint8_t _pinSCLK, _pinMOSI, _pinDC, _pinCS, _pinRST, _pinBL;
-#endif
 
     // Display hardware
     LGFX _lcd;
