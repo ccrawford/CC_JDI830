@@ -101,6 +101,7 @@ struct EngineState {
     float tit2   = 0;     // Turbine Inlet Temp #2
     float oilT   = 0;     // Oil Temp
     float oilP   = 0;     // Oil Pressure
+    float fuelP  = 0;     // Fuel Pressure (PSI)
     bool  isCold = false; // CHT cooling rate triggered (CALCULATED)
     float coldRate = 0.0; // deg/min cooling (CALCULATED)
     float bat    = 0;     // Battery Volts
@@ -125,7 +126,8 @@ struct EngineState {
     float tit1Smoothed = 0;
     float tit2Smoothed = 0;
     float oilTSmoothed = 0;
-    float oilPSmoothed = 0;
+    float oilPSmoothed  = 0;
+    float fuelPSmoothed = 0;
     float batSmoothed  = 0;
     float oatSmoothed  = 0;
     float crbSmoothed  = 0;
@@ -145,7 +147,8 @@ struct EngineState {
     float tit1Raw = 0;
     float tit2Raw = 0;
     float oilTRaw = 0;
-    float oilPRaw = 0;
+    float oilPRaw  = 0;
+    float fuelPRaw = 0;
     float batRaw  = 0;
     float oatRaw  = 0;
     float crbRaw  = 0;
@@ -172,7 +175,7 @@ struct EngineState {
     int   egtPeakCyl = 0;   // Calculated
     float chtPeak    = 0;   // Calculated
     int   chtPeakCyl = 0;   // Calculated
-    float hp     = 72;
+    float hp     = 0;
 
     // Used in calculations
     int   selectedCylinder = 3;  // Used for display. Max is number of cylinders + 1 for TIT
@@ -243,7 +246,8 @@ struct EngineState {
         emaStep(tit1Smoothed, tit1Raw, SmoothingAlpha::tit,  SmoothingSnap::tit);
         emaStep(tit2Smoothed, tit2Raw, SmoothingAlpha::tit,  SmoothingSnap::tit);
         emaStep(oilTSmoothed, oilTRaw, SmoothingAlpha::oilT, SmoothingSnap::oilT);
-        emaStep(oilPSmoothed, oilPRaw, SmoothingAlpha::oilP, SmoothingSnap::oilP);
+        emaStep(oilPSmoothed,  oilPRaw,  SmoothingAlpha::oilP, SmoothingSnap::oilP);
+        emaStep(fuelPSmoothed, fuelPRaw, SmoothingAlpha::oilP, SmoothingSnap::oilP);
         emaStep(batSmoothed,  batRaw,  SmoothingAlpha::bat,  SmoothingSnap::bat);
         emaStep(oatSmoothed,  oatRaw,  SmoothingAlpha::oat,  SmoothingSnap::oat);
         emaStep(crbSmoothed,  crbRaw,  SmoothingAlpha::misc, SmoothingSnap::misc);
@@ -269,7 +273,8 @@ struct EngineState {
         tit1 = tit1Smoothed;
         tit2 = tit2Smoothed;
         oilT = oilTSmoothed;
-        oilP = oilPSmoothed;
+        oilP  = oilPSmoothed;
+        fuelP = fuelPSmoothed;
         bat  = batSmoothed;
         oat  = oatSmoothed;
         crb  = crbSmoothed;

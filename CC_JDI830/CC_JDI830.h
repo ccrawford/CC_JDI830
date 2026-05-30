@@ -33,18 +33,17 @@
 // BottomBarMode — which system currently "owns" the bottom bar.
 //
 // The bottom bar is shared between several features: rotating data pages,
-// engine alarms, and (future) lean finder and device setup.  Only one mode
-// is active at a time.  The three data modes (ALL_DATA, FUEL_DATA,
-// CYLINDER_DETAIL) each rotate through a different set of BottomPage
-// definitions; ALARM takes over when a parameter enters the RED zone.
+// engine alarms, lean finder, and device setup.  Only one mode is active
+// at a time.  ALL_DATA rotates the BottomPage list (filtered by the
+// 3-way scan switch's ScanGroup); ALARM takes over when a parameter
+// enters the RED zone.  LEAN and SETUP are placeholders for features
+// that draw their own content into the bottom bar.
 // ---------------------------------------------------------------------------
 enum class BottomBarMode : uint8_t {
-    ALL_DATA,          // rotating pages showing all engine data (current behavior)
-    FUEL_DATA,         // rotating pages showing fuel-related data only (future)
-    CYLINDER_DETAIL,   // rotating pages showing per-cylinder detail (future)
+    ALL_DATA,          // rotating data pages (filtered by ScanSwitch position)
     ALARM,             // AlarmManager is displaying a warning
     LEAN,              // future: lean finder
-    SETUP,             // future: device setup
+    SETUP,             // future: device setup (pilot program)
 };
 
 // ---------------------------------------------------------------------------

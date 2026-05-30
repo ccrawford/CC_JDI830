@@ -148,6 +148,11 @@
         "id": 25,
         "label": "Screen Layout",
         "description": "Screen orientation: 0=Portrait (320x480), 1=Landscape (480x320)"
+      },
+      {
+        "id": 26,
+        "label": "Fuel Pressure",
+        "description": "Engine Fuel Pressure (PSI)"
       }
 
     ]

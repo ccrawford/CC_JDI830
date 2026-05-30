@@ -18,6 +18,7 @@
 // to any Gauge.  Keeps setupGauges() from repeating this pattern 10+ times.
 // ---------------------------------------------------------------------------
 void CC_JDI830::applyRangeDef(Gauge& gauge, const GaugeRangeDef& def) {
+    gauge.clearColorRanges();
     gauge.setRange(def.min, def.max);
     if (def.redline > 0) gauge.setRedline(def.redline);
     for (uint8_t i = 0; i < def.colorCount; i++) {
@@ -475,6 +476,10 @@ void CC_JDI830::set(int16_t messageID, char *setPoint)
         break;
     }
 
+    case 26:
+        curState.fuelPRaw = strtof(setPoint, nullptr);
+        break;
+
     default:
         break;
     }
@@ -836,8 +841,6 @@ void CC_JDI830::update()
     // data mode so page rotation resumes.
     switch (_bottomBarMode) {
         case BottomBarMode::ALL_DATA:
-        case BottomBarMode::FUEL_DATA:
-        case BottomBarMode::CYLINDER_DETAIL:
             // Scan for alarms while in a data-display mode
             if (_alarmMgr.scan(now)) {
                 _prevDataMode = _bottomBarMode;

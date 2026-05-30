@@ -495,7 +495,7 @@ public:
           _barWidth(0), _barHeight(0), _colGap(0),
           _egtRedline(0), _chtRedline(0),
           _chartLeft(0), _chartTop(0), _chartBottom(0),
-          _scaleWidth(35), _rightScaleWidth(0), _labelAreaHeight(24), _valueAreaHeight(0),
+          _scaleWidth(42), _rightScaleWidth(0), _labelAreaHeight(24), _valueAreaHeight(0),
           _selectedCylinder(-1), _scaleFont(nullptr), _labelFont(nullptr),
           _egtColor(TFT_BLUE), _chtColor(TFT_CYAN), _egtPeakColor(TFT_RED),
           _valueFont(nullptr), _showValues(false),

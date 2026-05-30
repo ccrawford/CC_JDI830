@@ -72,6 +72,7 @@ struct PlaneProfile {
     bool hasHp;
     bool hasDif;                // EGT differential (hottest - coldest)
     bool hasColdRate;
+    bool hasFuelP;           // Fuel pressure
 
     // --- Fuel tank presets (Factory Limits) ---
     // MAIN = usable fuel in main tanks.  AUX = usable fuel in aux tanks.
@@ -105,6 +106,7 @@ struct PlaneProfile {
     GaugeRangeDef res;             // fuel reserve at waypoint (calculated)
     GaugeRangeDef intercoolerEff;  // intercooler cooling effectiveness: CDT - IAT (calculated)
     GaugeRangeDef coldRate;
+    GaugeRangeDef fuelP;
 
     // Note: fuelCapacity is in EngineState, not here — it's a sim-reported
     // value, not a profile constant.  setupGauges() patches fuelRem.max

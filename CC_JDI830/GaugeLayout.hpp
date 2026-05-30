@@ -144,7 +144,7 @@ static constexpr GaugeLayout buildPortrait() {
     constexpr int16_t hbarX        = 220;   // left edge of HBar column
     constexpr int16_t hbarW        = 80;    // width of HBar sprites
     constexpr int16_t hbarH        = 35;    // sprite height per bar
-    constexpr int16_t hbarYSpacing = 33;    // vertical spacing between bars
+    constexpr int16_t hbarYSpacing = 40;    // vertical spacing between bars
     // First bar's top edge target — bars are positioned at
     //   barY + (i+1) * barYSpacing, so barY = hbarTopY - barYSpacing.
     constexpr int16_t hbarTopY     = 3;
@@ -304,7 +304,7 @@ static constexpr GaugeLayout buildLandscape() {
     constexpr int16_t egtChtH    = 140;
 
     // Bottom bar height
-    constexpr int16_t bottomBarH = 50;
+    constexpr int16_t bottomBarH = 48;
 
     // Arc geometry (intrinsic to the arc shape, not derivable from boundaries)
     constexpr int16_t arcOuterR  = 60;
@@ -348,7 +348,7 @@ static constexpr GaugeLayout buildLandscape() {
     constexpr int16_t egtChtW  = contentW;
 
     // Bottom bar: below EGT/CHT, same width as content area
-    constexpr int16_t bbY      = egtChtY + egtChtH + 15;  // Should probably center this in the available space.
+    constexpr int16_t bbY      = egtChtY + egtChtH + 15;
     constexpr int16_t bbW      = contentW;
 
     // %HP: centered between the two arc labels
@@ -416,7 +416,6 @@ static constexpr GaugeLayout buildLandscape() {
     // Static separator lines
     L.staticLines[0] = { contentX, hLineY, vLineX, hLineY };  // horizontal
     L.staticLines[1] = { vLineX,   0,      vLineX, SCREEN_H };// vertical: HBar edge
-    // L.staticLines[2] = { statusX - pad, 0, statusX - pad, SCREEN_H }; // vertical: status edge
     L.numStaticLines = 2;
 
     return L;

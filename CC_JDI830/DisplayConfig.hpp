@@ -96,14 +96,16 @@ inline DisplayConfig buildDefaultConfig(const PlaneProfile& profile,
     cfg.barYSpacing = L.barYSpacing;
     cfg.egtChtWidth = L.egtCht.w;
 
-    // 4-cylinder engines use a narrower EGT/CHT column, freeing horizontal
-    // space on the right side for additional HBar rows.
+    // 4-cylinder engines: portrait uses a narrower EGT/CHT column (frees
+    // horizontal space for more HBar rows).  In landscape EGT/CHT already
+    // spans full width and HBars are constrained to the arc row, so only
+    // the portrait layout needs these overrides.
     bool compact = (profile.numCylinders <= 4);
-    if (compact) {
-        cfg.egtChtWidth = 205;  // narrower column regardless of orientation
-        cfg.barYSpacing = 28;   // tighter spacing for more rows
-        cfg.barH        = 24;
-    }
+    // if (compact && mode == LayoutMode::PORTRAIT) {
+    //     cfg.egtChtWidth = 205;  // narrower column in portrait only
+    //     cfg.barYSpacing = 28;   // tighter spacing for more rows
+    //     cfg.barH        = 24;
+    // }
 
     // Compute how many HBar slots fit in the available vertical space.
     // Each bar's top edge is at:  barY + (i+1) * barYSpacing
@@ -124,9 +126,10 @@ inline DisplayConfig buildDefaultConfig(const PlaneProfile& profile,
     static constexpr DisplayVarId PREFERRED_ORDER[] = {
         DisplayVarId::OIL_TEMP,
         DisplayVarId::OIL_PRESS,
+        DisplayVarId::FUEL_PRESS,
         DisplayVarId::FUEL_FLOW,
         DisplayVarId::FUEL_REM,
-        DisplayVarId::OAT,
+        DisplayVarId::FUEL_PRESS,
         DisplayVarId::BATTERY,
         DisplayVarId::CARB_TEMP,
         DisplayVarId::COLD,

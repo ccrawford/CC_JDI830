@@ -54,6 +54,7 @@ static const PlaneProfile PROFILE_A2A_COMANCHE = {
     .hasHp        = true,
     .hasDif       = true,
     .hasColdRate  = true,
+    .hasFuelP     = true,
 
     // --- Fuel tank presets ---
     .fuelMain = 60.0f,       // Comanche 250 main tanks (2 × 30 gal)
@@ -84,6 +85,7 @@ static const PlaneProfile PROFILE_A2A_COMANCHE = {
     .res     = { 0, 70, 0,         { {0, 5, TFT_RED}, {5, 70, TFT_GREEN} }, 2 },
     .intercoolerEff = {},           // no turbo — no intercooler
     .coldRate= { 0, 100, 60,        { {0, 40, TFT_GREEN}, {40,60, TFT_YELLOW}, {60,200, TFT_RED} }, 3 },
+    .fuelP   = { 0, 45, 5,         { {0, 5, TFT_RED}, {5, 45, TFT_GREEN} }, 2 },
 };
 
 // ---------------------------------------------------------------------------
@@ -122,6 +124,7 @@ static const PlaneProfile PROFILE_CESSNA_T206H = {
     .hasHp        = true,
     .hasDif       = true,
     .hasColdRate  = true,
+    .hasFuelP     = true,
 
     // --- Fuel tank presets ---
     .fuelMain = 61.0f,       // T206H main tanks (2 × 30.5 gal usable)
@@ -151,6 +154,7 @@ static const PlaneProfile PROFILE_CESSNA_T206H = {
     .res     = { 0, 92, 0,         { {0, 5, TFT_RED}, {5, 92, TFT_GREEN} }, 2 },
     .intercoolerEff = { 0, 100, 0, { {0, 100, TFT_GREEN} }, 1 },  // CDT - IAT cooling percentage
     .coldRate= { 0, 100, 60,        { {0, 40, TFT_GREEN}, {40,60, TFT_YELLOW}, {60,200, TFT_RED} }, 3 },
+    .fuelP   = { 0, 45, 5,         { {0, 5, TFT_RED}, {5, 45, TFT_GREEN} }, 2 },
 };
 
 // ---------------------------------------------------------------------------
@@ -189,6 +193,7 @@ static const PlaneProfile PROFILE_CESSNA_172S = {
     .hasHp        = false,
     .hasDif       = true,
     .hasColdRate  = true,
+    .hasFuelP     = true,
 
     // --- Fuel tank presets ---
     .fuelMain = 53.0f,       // 172S main tanks (2 × 26.5 gal usable)
@@ -218,6 +223,77 @@ static const PlaneProfile PROFILE_CESSNA_172S = {
     .res     = { 0, 56, 0,         { {0, 5, TFT_RED}, {5, 56, TFT_GREEN} }, 2 },
     .intercoolerEff = {},           // no turbo — no intercooler
     .coldRate= { 0, 100, 60,        { {0, 40, TFT_GREEN}, {40,60, TFT_YELLOW}, {60,200, TFT_RED} }, 3 },
+    .fuelP   = { 0, 45, 5,         { {0, 5, TFT_RED}, {5, 45, TFT_GREEN} }, 2 },
+};
+
+// ---------------------------------------------------------------------------
+// CubCrafters CC18-180 X-Cub — naturally aspirated 4-cylinder O-360-C1A
+//
+// Carbureted, fixed-pitch, 180 hp @ 2700 RPM.
+// MSFS likely reports a single EGT/CHT, so we fake per-cylinder values.
+// Ranges from CC18-180 POH, Lycoming O-360 Operator's Manual, and SI 1144.
+// ---------------------------------------------------------------------------
+static const PlaneProfile PROFILE_XCUB = {
+    .name = "CubCrafters X-Cub",
+
+    .numCylinders         = 4,
+    .reportsSingleEgtCht  = true,
+    .fakeCylSpreadPct     = 0.09f,
+
+    // --- Availability ---
+    .hasEgt       = true,
+    .hasCht       = true,
+    .hasTit1      = false,
+    .hasTit2      = false,
+    .hasOilT      = true,
+    .hasOilP      = true,
+    .hasBat       = true,
+    .hasOat       = true,
+    .hasCrb       = true,      // carbureted
+    .hasCdt       = false,
+    .hasIat       = false,
+    .hasMap       = true,
+    .hasFf        = true,
+    .hasFuelRem   = true,
+    .hasReq       = true,
+    .hasRes       = true,
+    .hasMpg       = true,
+    .hasEndurance = true,
+    .hasUsed      = true,
+    .hasHp        = false,
+    .hasDif       = true,
+    .hasColdRate  = true,
+    .hasFuelP     = true,
+
+    // --- Fuel tank presets ---
+    .fuelMain = 30.0f,       // X-Cub main tanks (2 × 15 gal usable)
+    .fuelAux  = 0.0f,
+
+    // --- Gauge ranges ---
+    .rpm     = { 0, 2800, 2700,   { {0, 2699, TFT_GREEN}, {2700, 2800, TFT_RED} }, 2 },
+    .map     = { 0, 32, 0,       { {0, 29, TFT_GREEN}, {29, 32, TFT_GREEN} }, 2 },
+    .oilT    = { 0, 278, 245,     { {0, 100, TFT_YELLOW}, {100, 245, TFT_GREEN}, {245, 278, TFT_RED} }, 3 },
+    .oilP    = { 0, 136, 115,     { {0, 25, TFT_RED}, {25, 60, TFT_YELLOW}, {60, 95, TFT_GREEN}, {95, 115, TFT_YELLOW}, {115,136, TFT_RED} }, 5 },
+    .bat     = { 0, 23.46, 0,      { {0, 2.04, TFT_RED}, {2.04, 6.8, TFT_YELLOW}, {6.8, 19.2, TFT_GREEN}, {19.2, 23.46, TFT_RED} }, 4 },
+    .oat     = { -20, 50, 0,      { {-20, 50, TFT_GREEN} }, 1 },
+    .egt     = { 0, 1816, 0,   { {0, 1400, TFT_GREEN}, {1400, 1599, TFT_YELLOW}, {1600, 1700, TFT_RED} }, 3 },
+    .cht     = { 0, 640, 500,   { {0, 559, TFT_GREEN}, {559, 627, TFT_YELLOW}, {627, 640, TFT_RED} }, 3 },
+    .tit1    = {},
+    .tit2    = {},
+    .ff      = { 0, 23, 0,        { {0, 0.5, TFT_RED}, {0.1, 23, TFT_GREEN} }, 2 },
+    .fuelRem = { 0, 30, 0,        { {0, 5, TFT_RED}, {5, 30, TFT_GREEN} }, 2 },
+    .used    = { 0, 9999, 0,      { {0, 9999, TFT_GREEN} }, 1 },
+    .endurance = { 0, 9999, 0,    { {0, 20, TFT_RED}, {20, 9999, TFT_GREEN} }, 2 },
+    .hp      = { 0, 100, 0,       { {0, 100, TFT_WHITE} }, 1 },
+    .crb     = { -30, 50, 0,      { {-30, -10, TFT_YELLOW}, {-10, 40, TFT_GREEN}, {40, 50, TFT_YELLOW} }, 3 },
+    .cdt     = {},
+    .iat     = {},
+    .dif     = { 0, 500, 0,       { {0, 300, TFT_GREEN}, {300, 500, TFT_RED} }, 2 },
+    .req     = { 0, 30, 0,        { {0, 30, TFT_GREEN} }, 1 },
+    .res     = { 0, 30, 0,        { {0, 5, TFT_RED}, {5, 30, TFT_GREEN} }, 2 },
+    .intercoolerEff = {},          // no turbo — no intercooler
+    .coldRate= { 0, 80, 50,        { {0, 30, TFT_GREEN}, {31, 50, TFT_YELLOW}, {51, 80, TFT_RED} }, 3 },
+    .fuelP   = { 0, 10, 0.5f,     { {0, 0.5, TFT_RED}, {0.5, 7, TFT_GREEN}, {7, 8, TFT_YELLOW}, {8, 10, TFT_RED} }, 4 },
 };
 
 // ---------------------------------------------------------------------------
@@ -228,5 +304,6 @@ static const PlaneProfile* const ALL_PROFILES[] = {
     &PROFILE_A2A_COMANCHE,
     &PROFILE_CESSNA_T206H,
     &PROFILE_CESSNA_172S,
+    &PROFILE_XCUB,
 };
 static constexpr int NUM_PROFILES = sizeof(ALL_PROFILES) / sizeof(ALL_PROFILES[0]);
