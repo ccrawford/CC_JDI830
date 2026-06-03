@@ -573,6 +573,20 @@ public:
     bool isNormalized() const { return _normalizeMode; }
 
     // --- TIT configuration ---
+    // Must be called before addTit() each time setupGauges() runs, so that
+    // switching from a TIT-equipped profile to a no-TIT profile clears the
+    // accumulated state instead of carrying over the old column count and
+    // right-scale reservation.
+    void resetTit()
+    {
+        _numTit = 0;
+        _rightScaleWidth = 0;
+        for (int i = 0; i < MAX_TIT; i++) {
+            _titPtrs[i]   = nullptr;
+            _titLabels[i] = "T";
+        }
+    }
+
     // Add a TIT column. Call once for TIT1, twice for TIT1+TIT2.
     // The label appears below the bar (e.g. "T" or "T1").
     void addTit(const float *ptr, const char *label = "T")

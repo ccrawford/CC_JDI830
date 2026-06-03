@@ -142,6 +142,7 @@ void CC_JDI830::setupGauges() {
         _egtChtBars.setEgtPtr(i, &curState.egt[i]);
         _egtChtBars.setChtPtr(i, &curState.cht[i]);
     }
+    _egtChtBars.resetTit();   // clear any TIT state from a previous profile
     if (p.hasTit1) {
         _egtChtBars.setTitRange(p.tit1.min, p.tit1.max);
         if (p.tit1.redline > 0) _egtChtBars.setTitRedline(p.tit1.redline);

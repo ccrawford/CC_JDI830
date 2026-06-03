@@ -142,7 +142,7 @@ inline DisplayVarInfo resolveDisplayVar(DisplayVarId id,
         case DisplayVarId::INTERCOOLER_EFF:
             return { "C-I",   &prof.intercoolerEff, &state.cdtLessIat, 0, avail };
         case DisplayVarId::FUEL_PRESS:
-            return { "F-P",   &prof.fuelP,          &state.fuelP,      0, avail };
+            return { "F-P",   &prof.fuelP,          &state.fuelP,      1, avail };
         default:
             return { "???",   nullptr,       nullptr,        0, false };
     }

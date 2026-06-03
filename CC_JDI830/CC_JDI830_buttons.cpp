@@ -77,11 +77,11 @@ void CC_JDI830::updateLeanFinder() {
                 _leanArmed = true;
         }
 
-        // Once armed, flash the cylinder ID box over the hottest EGT.
-        // The flash follows whichever cylinder is currently hottest.
-        if (_leanArmed) {
-            _egtChtBars.setFlashCylinder(hotCyl);
+        // Flash the cylinder ID box over the hottest EGT from the start of
+        // leaning; once armed, also watch for a cylinder peaking out.
+        _egtChtBars.setFlashCylinder(hotCyl);
 
+        if (_leanArmed) {
             // Check if any cylinder has dropped from its peak
             for (int i = 0; i < nCyl; i++) {
                 if (_leanCylPeak[i] - curState.egt[i] >= LEAN_PEAK_DROP) {
@@ -101,9 +101,16 @@ void CC_JDI830::updateLeanFinder() {
     _leanPhaseStartTime = now;  // reset timer for the new phase
 
     switch (_leanPhase) {
-        case LeanPhase::PRE_LEAN:
+        case LeanPhase::PRE_LEAN: {
+            // Box the current hottest cylinder immediately on entry
+            int hotCyl = 0;
+            for (int i = 1; i < nCyl; i++)
+                if (curState.egt[i] > curState.egt[hotCyl]) hotCyl = i;
+            _egtChtBars.setSelectedCylinder(-1);
+            _egtChtBars.setFlashCylinder(hotCyl);
             _bottomBar.showMessage("ROP", TFT_WHITE);
             break;
+        }
 
         case LeanPhase::LEANING:
             // Snapshot current EGTs as baselines and reset tracking state
